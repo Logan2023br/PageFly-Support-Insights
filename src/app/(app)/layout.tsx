@@ -15,7 +15,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <SidebarWithUser />
       </Suspense>
       <main className="min-w-0 flex-1 pt-4 [overflow-x:clip] lg:pt-0">
-        <div className="relative z-40 mb-3 flex justify-end">
+        <div className="relative z-40 mb-3 flex justify-end pr-1.5">
           <NotificationBell />
         </div>
         {children}

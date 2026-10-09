@@ -9,16 +9,18 @@ import { addDays, diffDays } from "@/lib/data/parse";
 /** Ô KPI chính theo từng tab, mỗi mảng là một hàng (4–5 ô). */
 export const MAIN_TILES: Record<Query["cat"], string[][]> = {
   all: [
-    ["total", "stores", "feedback", "issue", "improve"],
-    ["fl_self", "ts_handled", "dev_needed", "refund", "unresolved_shift"],
-    ["resolved_rate", "waiting_customer", "first_reply_median", "handle_fl", "csat_avg"],
-    ["angry", "churn", "upsell", "review_missed", "solution_bad"],
+    ["total", "stores", "issue", "feedback"],
+    ["improve", "fl_self", "ts_handled", "dev_needed"],
+    ["refund", "unresolved_shift", "waiting_customer", "resolved_rate"],
+    ["first_reply_median", "handle_fl", "csat_avg", "solution_bad"],
+    ["angry", "churn", "upsell", "review_missed"],
   ],
   Issue: [
-    ["issue", "stores", "fl_self", "ts_handled", "dev_needed"],
-    ["refund", "dev_note", "unresolved_shift", "waiting_customer", "solution_bad"],
-    ["resolved_rate", "first_reply_median", "handle_fl", "handle_ts", "csat_avg"],
-    ["angry", "churn", "upsell", "review_missed", "max_reply"],
+    ["issue", "stores", "fl_self", "ts_handled"],
+    ["dev_needed", "refund", "dev_note", "unresolved_shift"],
+    ["waiting_customer", "solution_bad", "resolved_rate", "first_reply_median"],
+    ["handle_fl", "handle_ts", "csat_avg", "max_reply"],
+    ["angry", "churn", "upsell", "review_missed"],
   ],
   Feedback: [
     ["feedback", "stores", "upsell", "churn"],

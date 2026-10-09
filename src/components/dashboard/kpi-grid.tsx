@@ -79,9 +79,10 @@ function KpiTile({ tile, active, href, prevLabel, large }: { tile: Tile; active:
       <div className="flex items-center justify-between gap-2 text-[12px] font-semibold text-pf-muted">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="leading-snug">{tile.def.label}</span>
-          <span className="group/info relative shrink-0" aria-label={`Cách tính: ${tile.def.hint}`}>
+          {/* Khung chú thích neo theo ô (không theo icon) để không thò ra ngoài mép trang. */}
+          <span className="group/info shrink-0" aria-label={`Cách tính: ${tile.def.hint}`}>
             <Info size={13} strokeWidth={1.75} className="text-pf-faint group-hover/info:text-pf-primary-hi" />
-            <span className="pointer-events-none invisible absolute left-1/2 top-5 z-40 w-[260px] -translate-x-1/2 rounded-[10px] border border-pf-border bg-pf-bg-deep px-3 py-2 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/info:visible group-hover/info:opacity-100">
+            <span className="pointer-events-none invisible absolute inset-x-3 top-11 z-40 rounded-[10px] border border-pf-border bg-pf-bg-deep px-3 py-2 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/info:visible group-hover/info:opacity-100">
               <span className="mb-0.5 block font-semibold text-white">Cách tính</span>
               {tile.def.hint}
             </span>
