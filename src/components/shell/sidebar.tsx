@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { BarChart3, FileSpreadsheet, KeyRound, ListFilter, Plug, ShieldCheck, Store, Users, type LucideIcon } from "lucide-react";
@@ -22,7 +23,7 @@ export function Sidebar({ footer, isAdmin = false }: { footer?: ReactNode; isAdm
   return (
     <aside className="lg:sticky lg:top-6 lg:flex lg:h-[calc(100vh-48px)] lg:w-[212px] lg:shrink-0 lg:flex-col">
       <Link href="/" className="flex items-center gap-2.5 pb-4">
-        <span className="grid size-7 place-items-center rounded-[8px] bg-pf-primary text-[13px] font-bold text-white shadow-pf-button">P</span>
+        <Image src="/pagefly-icon.png" alt="PageFly" width={28} height={28} priority className="size-7 rounded-[8px] shadow-pf-button" />
         <span className="font-display text-[15px] font-semibold text-pf-text">
           PageFly <span className="text-pf-muted">Insights</span>
         </span>
