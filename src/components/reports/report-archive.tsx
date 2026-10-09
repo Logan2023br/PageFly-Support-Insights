@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Archive, CalendarRange, Download, Eye, FilePlus2, Loader2, Search, Trash2, X } from "lucide-react";
+import { Archive, CalendarRange, Download, Eye, FilePlus2, Info, Loader2, Search, Trash2, X } from "lucide-react";
 import type { ArchiveEntry } from "@/lib/archive/store";
 import { ARCHIVE_GRAIN_LABEL, ARCHIVE_GRAINS, type ArchiveGrain } from "@/lib/archive/grains";
 import { addDays, diffDays } from "@/lib/data/parse";
@@ -135,7 +135,7 @@ export function ReportArchive({
 
   return (
     <section id="kho-bao-cao" className="scroll-mt-6 rounded-[20px] border border-pf-border bg-pf-card p-4 shadow-pf-card sm:p-5">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-3 grid justify-items-start gap-3">
         <div>
           <h2 className="flex items-center gap-2 font-display text-[16px] font-semibold text-white">
             <Archive size={17} strokeWidth={1.75} className="text-pf-primary-hi" /> Kho báo cáo PDF · {TEAM_LABEL[team]}
@@ -149,20 +149,39 @@ export function ReportArchive({
         <div className="flex gap-1 rounded-xl border border-pf-border bg-white/[.02] p-1" role="tablist">
           {(
             [
-              ["auto", "Báo cáo tự động"],
-              ["custom", "Báo cáo tự tạo"],
+              ["auto", "Báo cáo tự động", "Hệ thống tự tạo theo lịch, cùng lúc cho cả 3 team (CS, Dev, Marketing):", ["Tuần: 05:00 sáng thứ 2 — số liệu thứ 2 đến hết chủ nhật tuần trước", "Tháng: 01:00 ngày 1 — tháng trước", "Quý: 01:00 ngày đầu quý — quý trước", "Năm: 01:00 ngày 1/1 — năm trước", "Luôn có phần so sánh với kỳ liền trước"]],
+              ["custom", "Báo cáo tự tạo", "Bạn tự chọn khoảng ngày để tạo báo cáo PDF:", ["Chỉ tạo cho team đang xem, team khác không bị tạo theo", "Tuỳ chọn so sánh với khoảng cùng số ngày ngay trước đó", "Ai cũng tạo được; người tạo hoặc admin mới xoá được", "Hữu ích khi cần báo cáo cho sự kiện, đợt release, khoảng bất kỳ"]],
             ] as const
-          ).map(([t, label]) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              onClick={() => switchTab(t)}
-              className={cx("rounded-[9px] px-3.5 py-1.5 text-[12.5px] font-semibold", tab === t ? "bg-pf-primary/14 text-white ring-1 ring-pf-primary-hi/40" : "text-pf-muted hover:text-pf-text")}
-            >
-              {label} <span className="ml-0.5 text-pf-faint">{tabCounts[t]}</span>
-            </button>
+          ).map(([t, label, intro, points]) => (
+            <span key={t} className="group/tab relative">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
+                aria-describedby={`tip-${t}`}
+                onClick={() => switchTab(t)}
+                className={cx("inline-flex items-center gap-1.5 rounded-[9px] px-3.5 py-1.5 text-[12.5px] font-semibold", tab === t ? "bg-pf-primary/14 text-white ring-1 ring-pf-primary-hi/40" : "text-pf-muted hover:text-pf-text")}
+              >
+                {label} <span className="text-pf-faint">{tabCounts[t]}</span>
+                <Info size={12} strokeWidth={1.75} className="text-pf-faint" />
+              </button>
+              <span
+                id={`tip-${t}`}
+                role="tooltip"
+                className="pointer-events-none invisible absolute left-0 top-full z-40 mt-2 w-[min(320px,calc(100vw-48px))] rounded-[12px] border border-pf-border bg-pf-bg-deep px-3 py-2.5 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/tab:visible group-hover/tab:opacity-100 group-focus-within/tab:visible group-focus-within/tab:opacity-100"
+              >
+                <span className="mb-1 block font-semibold text-white">{label}</span>
+                {intro}
+                <span className="mt-1 grid gap-0.5">
+                  {points.map((x) => (
+                    <span key={x} className="flex gap-1.5">
+                      <span className="text-pf-primary-hi">•</span>
+                      {x}
+                    </span>
+                  ))}
+                </span>
+              </span>
+            </span>
           ))}
         </div>
       </div>
