@@ -4,12 +4,14 @@ import { earliestDay, getDataset } from "@/lib/data";
 import { buildCompare, buildDashboard, metricTrend } from "@/lib/dashboard";
 import { bucketSeries, type DayPoint } from "@/lib/metrics/compute";
 import { METRIC_BY_KEY } from "@/lib/metrics/defs";
-import { ticketSummary } from "@/lib/metrics/summaries";
+import { customerSummary, ticketSummary } from "@/lib/metrics/summaries";
 import { hrefWith, parseQuery, periodLabel, RANGE_LABELS, selectTickets, type SearchParams } from "@/lib/query";
 import { aiConfigured } from "@/lib/ai/insights";
 import { FilterBar } from "@/components/filters/filter-bar";
 import { KpiMain, KpiMore, MetricGlossary } from "@/components/dashboard/kpi-grid";
 import { ActionPanel } from "@/components/dashboard/action-panel";
+import { StoreList } from "@/components/dashboard/store-list";
+import { buildCustomers } from "@/lib/customers";
 import { actionItems } from "@/lib/alerts";
 import { SummaryBlocks } from "@/components/dashboard/summary-blocks";
 import { TrendChart, VolumeChart } from "@/components/charts/charts";
@@ -58,6 +60,7 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
   const tileKey = typeof sp.tile === "string" && METRIC_BY_KEY[sp.tile]?.match ? sp.tile : null;
   const drill = tileKey ? d.cur.filter(METRIC_BY_KEY[tileKey].match!) : null;
   const prevLabel = q.prev ? periodLabel(q.prev) : null;
+  const drillStores = tileKey === "stores" && drill ? buildCustomers(ds.tickets, drill, q.period.from, ds.loadedAt) : null;
   const drillTrend = tileKey ? metricTrend(METRIC_BY_KEY[tileKey], d.cur, d.prev, q) : null;
   const series = bucketSeries(d.series);
   const compareOpen = sp.compare === "1" && q.prev;
@@ -96,18 +99,28 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
       {drill && tileKey && (
         <Panel className="p-4 sm:p-5">
           <PanelTitle
-            title={`${METRIC_BY_KEY[tileKey].label} · ${drill.length} ticket · ${new Set(drill.map((t) => t.store_domain).filter(Boolean)).size} store`}
+            title={
+              drillStores
+                ? `Tổng store · ${drillStores.length} store · ${drill.length} ticket`
+                : `${METRIC_BY_KEY[tileKey].label} · ${drill.length} ticket · ${new Set(drill.map((t) => t.store_domain).filter(Boolean)).size} store`
+            }
             note={METRIC_BY_KEY[tileKey].hint}
             right={
-              <ButtonLink href={ticketsHref({ metric: tileKey })} variant="ghost">
-                Xem đầy đủ trong Chi tiết
-              </ButtonLink>
+              drillStores ? (
+                <ButtonLink href={hrefWith("/customers", scope, {})} variant="ghost">
+                  Mở trang Khách hàng
+                </ButtonLink>
+              ) : (
+                <ButtonLink href={ticketsHref({ metric: tileKey })} variant="ghost">
+                  Xem đầy đủ trong Chi tiết
+                </ButtonLink>
+              )
             }
           />
           <div className="mb-4 rounded-[16px] border border-pf-border bg-white/[.02] p-3.5">
             <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-pf-faint">Bản tóm tắt</div>
             <ul className="grid gap-1">
-              {ticketSummary(drill, q.period).lines.map((l, i) => (
+              {(drillStores ? customerSummary(drill) : ticketSummary(drill, q.period)).lines.map((l, i) => (
                 <li key={i} className="text-[12.5px] leading-relaxed text-pf-body">
                   {l.text}
                 </li>
@@ -131,8 +144,17 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
               />
             </div>
           )}
-          <MiniTable tickets={drill} hrefFor={(t) => ticketsHref({ metric: tileKey, ticket: t.id })} />
-          {drill.length > 25 && <p className="mt-3 text-[11.5px] text-pf-faint">Hiển thị 25/{drill.length} ticket mới nhất.</p>}
+          {drillStores ? (
+            <>
+              <StoreList customers={drillStores} />
+              {drillStores.length > 50 && <p className="mt-3 text-[11.5px] text-pf-faint">Hiển thị 50/{drillStores.length} store nhiều ticket nhất. Xem đầy đủ ở trang Khách hàng.</p>}
+            </>
+          ) : (
+            <>
+              <MiniTable tickets={drill} hrefFor={(t) => ticketsHref({ metric: tileKey, ticket: t.id })} />
+              {drill.length > 25 && <p className="mt-3 text-[11.5px] text-pf-faint">Hiển thị 25/{drill.length} ticket mới nhất.</p>}
+            </>
+          )}
         </Panel>
       )}
 

@@ -6,17 +6,19 @@ import { customerSummary, flSummary, ticketSummary } from "@/lib/metrics/summari
 import { inPeriod, periodLabel, selectTickets, type Period, type Query } from "@/lib/query";
 import { addDays, diffDays } from "@/lib/data/parse";
 
-/** Ô KPI chính theo từng tab, mỗi mảng là một hàng (4–6 ô). */
+/** Ô KPI chính theo từng tab, mỗi mảng là một hàng (4–5 ô). */
 export const MAIN_TILES: Record<Query["cat"], string[][]> = {
   all: [
     ["total", "stores", "feedback", "issue", "improve"],
-    ["fl_self", "ts_handled", "dev_needed", "refund", "unresolved_shift", "waiting_customer"],
-    ["resolved_rate", "first_reply_median", "csat_avg", "angry", "churn", "upsell"],
+    ["fl_self", "ts_handled", "dev_needed", "refund", "unresolved_shift"],
+    ["resolved_rate", "waiting_customer", "first_reply_median", "handle_fl", "csat_avg"],
+    ["angry", "churn", "upsell", "review_missed", "solution_bad"],
   ],
   Issue: [
     ["issue", "stores", "fl_self", "ts_handled", "dev_needed"],
-    ["refund", "dev_note", "unresolved_shift", "waiting_customer", "solution_bad", "review_missed"],
-    ["resolved_rate", "first_reply_median", "handle_fl", "handle_ts", "angry", "churn"],
+    ["refund", "dev_note", "unresolved_shift", "waiting_customer", "solution_bad"],
+    ["resolved_rate", "first_reply_median", "handle_fl", "handle_ts", "csat_avg"],
+    ["angry", "churn", "upsell", "review_missed", "max_reply"],
   ],
   Feedback: [
     ["feedback", "stores", "upsell", "churn"],
@@ -101,7 +103,7 @@ export function buildDashboard(all: Ticket[], q: Query) {
       drillable: Boolean(def.match) && !missing.length,
       change: cmpByKey.get(key) ?? null,
       missing,
-      stores: matched ? new Set(matched.map((t) => t.store_domain).filter(Boolean)).size : null,
+      stores: matched && key !== "stores" ? new Set(matched.map((t) => t.store_domain).filter(Boolean)).size : null,
     };
   };
   const main = MAIN_TILES[q.cat].map((row) => row.map((k) => tile(k)));

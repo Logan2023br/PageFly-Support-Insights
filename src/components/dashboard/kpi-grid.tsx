@@ -7,9 +7,9 @@ import { AlertBadge, cx, Delta } from "@/components/ui";
 
 type HrefFor = (key: string | null) => string;
 
-/** Ô KPI chính, xếp theo hàng (4–6 ô mỗi hàng). Bấm ô để xem tóm tắt + biểu đồ 2 kỳ bên dưới. */
+/** Ô KPI chính, xếp theo hàng (4–5 ô mỗi hàng). Bấm ô để xem tóm tắt + biểu đồ 2 kỳ bên dưới. */
 export function KpiMain({ rows, selected, hrefFor, prevLabel }: { rows: Tile[][]; selected: string | null; hrefFor: HrefFor; prevLabel: string | null }) {
-  const cols: Record<number, string> = { 4: "xl:grid-cols-4", 5: "xl:grid-cols-5", 6: "lg:grid-cols-3 xl:grid-cols-6" };
+  const cols: Record<number, string> = { 4: "xl:grid-cols-4", 5: "lg:grid-cols-3 xl:grid-cols-5", 6: "lg:grid-cols-3 xl:grid-cols-6" };
   return (
     <div className="grid gap-3">
       {rows.map((row, i) => (

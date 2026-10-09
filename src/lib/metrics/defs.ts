@@ -124,6 +124,8 @@ export const METRICS: MetricDef[] = [
     format: "count",
     polarity: "neutral",
     hint: "Số store khác nhau (không trùng) đã contact trong kỳ. Ticket không ghi store_domain không được tính.",
+    // Ticket "thuộc" chỉ số = ticket có ghi store; bấm ô để xem danh sách store.
+    match: (t) => t.store_domain != null,
     compute: (ts) => new Set(ts.map((t) => t.store_domain).filter(Boolean)).size,
   },
 ];
