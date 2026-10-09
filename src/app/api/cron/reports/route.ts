@@ -6,8 +6,9 @@ import { generateArchive } from "@/lib/archive/store";
 export const maxDuration = 60;
 
 /**
- * Vercel Cron gọi mỗi ngày lúc 18:00 UTC = 01:00 giờ VN (xem vercel.json).
- * Thứ 2 → báo cáo tuần trước; ngày 1 → tháng trước; 1/1, 1/4, 1/7, 1/10 → quý trước; 1/1 → năm trước.
+ * Vercel Cron (xem vercel.json):
+ * - `?only=week`: 22:00 UTC chủ nhật = 05:00 sáng thứ 2 giờ VN → báo cáo tuần trước (thứ 2 → hết chủ nhật).
+ * - không tham số: mỗi ngày 18:00 UTC = 01:00 giờ VN → ngày 1: tháng trước; 1/1, 1/4, 1/7, 1/10: quý trước; 1/1: năm trước.
  * Xác thực bằng CRON_SECRET (Vercel tự gửi header Authorization: Bearer <CRON_SECRET>).
  */
 export async function GET(request: NextRequest) {
@@ -16,7 +17,8 @@ export async function GET(request: NextRequest) {
   if (request.headers.get("authorization") !== `Bearer ${secret}`) return NextResponse.json({ error: "Không có quyền" }, { status: 401 });
 
   const today = vnDayKey(Date.now());
-  const grains = dueGrains(today);
+  const weekly = request.nextUrl.searchParams.get("only") === "week";
+  const grains = dueGrains(today).filter((g) => (weekly ? g === "week" : g !== "week"));
   const results = [];
   for (const g of grains) results.push(await generateArchive(g, { auto: true }));
   return NextResponse.json({ today, grains, results });

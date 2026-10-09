@@ -68,7 +68,6 @@ export function ReportArchive({
   const [to, setTo] = useState(today);
   const [compare, setCompare] = useState(true);
   // Admin tạo bù báo cáo tự động
-  const [genGrain, setGenGrain] = useState<ArchiveGrain>(() => ARCHIVE_GRAINS.find((g) => latest[g].missing) ?? "week");
 
   const tabEntries = useMemo(() => entries.filter((e) => tabOf(e) === tab), [entries, tab]);
   const years = useMemo(() => [...new Set(tabEntries.map((e) => e.year))].sort((a, b) => b - a), [tabEntries]);
@@ -118,10 +117,12 @@ export function ReportArchive({
       if (ok) setFormOpen(false);
       router.refresh();
     });
-  const regen = latest[genGrain];
+  // "Tạo lại" gắn với loại kỳ đang chọn (Tuần/Tháng/Quý/Năm): chỉ bật khi kỳ đã kết thúc gần nhất của loại đó chưa có báo cáo.
+  const regen = grain === "all" ? null : latest[grain];
   const createAuto = () =>
     start(async () => {
-      const { ok, data } = await post({ grain: genGrain });
+      if (grain === "all") return;
+      const { ok, data } = await post({ grain });
       setMsg(!ok ? (data.error ?? "Không tạo được báo cáo") : data.created?.length ? `Đã tạo lại báo cáo tự động ${data.period?.label} (${data.created.length} team còn thiếu).` : `${data.period?.label} đã có đủ báo cáo.`);
       router.refresh();
     });
@@ -141,7 +142,7 @@ export function ReportArchive({
           </h2>
           <p className="mt-0.5 text-[12px] text-pf-muted">
             {tab === "auto"
-              ? "Hệ thống tự tạo lúc 01:00 sáng cho cả 3 team: thứ 2 → tuần trước · ngày 1 → tháng trước · đầu quý → quý trước · 1/1 → năm trước."
+              ? "Hệ thống tự tạo cho cả 3 team: 05:00 sáng thứ 2 → báo cáo tuần trước (thứ 2 – hết chủ nhật) · 01:00 ngày 1 → tháng trước · đầu quý → quý trước · 1/1 → năm trước."
               : `Báo cáo do người dùng tự chọn khoảng ngày — chỉ tạo cho ${TEAM_LABEL[team]}, các team khác không bị tạo theo.`}
           </p>
         </div>
@@ -272,19 +273,14 @@ export function ReportArchive({
         </label>
         {tab === "auto" && isAdmin && (
           <div className="ml-auto flex flex-wrap items-center gap-1.5">
-            <select value={genGrain} onChange={(e) => setGenGrain(e.target.value as ArchiveGrain)} className={inputCls} aria-label="Kỳ cần tạo lại">
-              {ARCHIVE_GRAINS.map((g) => (
-                <option key={g} value={g}>
-                  {latest[g].label}
-                  {latest[g].missing ? " · chưa có" : " · đã có"}
-                </option>
-              ))}
-            </select>
+            <span className={cx("text-[11.5px]", regen?.missing ? "text-pf-warn" : "text-pf-muted")}>
+              {regen ? `${regen.label}: ${regen.missing ? "chưa có báo cáo" : "đã có báo cáo"}` : "Chọn Tuần / Tháng / Quý / Năm để tạo lại"}
+            </span>
             <button
               type="button"
-              disabled={pending || !writable || !regen.missing}
+              disabled={pending || !writable || !regen?.missing}
               onClick={createAuto}
-              title={regen.missing ? `${regen.label} chưa có báo cáo tự động (lịch tự động có thể bị lỗi) — bấm để tạo lại cho cả 3 team` : `${regen.label} đã có báo cáo tự động, không cần tạo lại`}
+              title={!regen ? "Chọn loại kỳ trước" : regen.missing ? `${regen.label} chưa có báo cáo tự động (lịch tự động có thể bị lỗi) — bấm để tạo lại cho cả 3 team` : `${regen.label} đã có báo cáo tự động, không cần tạo lại`}
               className="inline-flex h-8 items-center gap-1.5 rounded-[10px] bg-pf-primary px-3 text-[12px] font-semibold text-white disabled:bg-transparent disabled:text-pf-faint disabled:ring-1 disabled:ring-pf-border"
             >
               {pending ? <Loader2 size={13} className="animate-spin" /> : null} Tạo lại
@@ -356,7 +352,7 @@ export function ReportArchive({
           {tabEntries.length
             ? "Không có báo cáo khớp bộ lọc."
             : tab === "auto"
-              ? "Chưa có báo cáo tự động nào. Báo cáo đầu tiên sẽ được tạo lúc 01:00 sáng thứ 2 tới."
+              ? "Chưa có báo cáo tự động nào. Báo cáo tuần đầu tiên sẽ được tạo lúc 05:00 sáng thứ 2 tới."
               : 'Chưa có báo cáo tự tạo nào. Bấm "Tạo báo cáo mới" để chọn khoảng ngày.'}
         </p>
       )}
