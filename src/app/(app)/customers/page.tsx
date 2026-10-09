@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Fragment } from "react";
 import { earliestDay, getDataset } from "@/lib/data";
 import { formatVnDate } from "@/lib/data/parse";
@@ -18,6 +18,7 @@ import { MOOD_TONE, resolutionTone } from "@/components/tickets/mini-table";
 import { TicketDrawer } from "@/components/tickets/ticket-drawer";
 import { ExpandRow } from "@/components/customers/expand-row";
 import { ContactRows } from "@/components/customers/contact-rows";
+import { RevenueBreakdown } from "@/components/customers/revenue-breakdown";
 import { Badge, buttonClass, cx, Delta, Empty, PageHeader, PageSkeleton, Panel, PanelTitle } from "@/components/ui";
 
 const PAGE_SIZE = 50;
@@ -28,6 +29,39 @@ const SORTS: Record<SortKey, (c: Customer) => number> = {
   last: (c) => c.last.recap_at_vn ?? 0,
   price: (c) => c.price ?? -1,
 };
+
+type KpiKey = "stores" | "new" | "repeat" | "risk" | "revenue_risk" | "upsell" | "paid" | "revenue";
+/** Bấm ô KPI → lọc danh sách khách theo đúng nhóm store đã tạo ra con số. */
+const KPI_MATCH: Record<KpiKey, (c: Customer) => boolean> = {
+  stores: () => true,
+  new: (c) => c.isNew,
+  repeat: (c) => c.tickets.length >= 2,
+  risk: (c) => c.segment === "risk",
+  revenue_risk: (c) => c.segment === "risk",
+  upsell: (c) => c.segment === "upsell",
+  paid: (c) => (c.price ?? 0) > 0,
+  revenue: () => true,
+};
+
+function slotBucket(c: Customer): string | null {
+  if (c.maxSlot === Infinity) return "Không giới hạn slot";
+  if (c.pagesPublished == null || !c.maxSlot) return null;
+  const r = c.pagesPublished / c.maxSlot;
+  return r >= 1 ? "Đã dùng hết slot" : r >= 0.8 ? "Dùng ≥ 80% slot" : r >= 0.5 ? "Dùng 50–79% slot" : "Dùng < 50% slot";
+}
+
+/** Các chiều phân bố; bấm một dòng → lọc danh sách (?d_<key>=giá trị). */
+const DIMS = {
+  contacts: { title: "Số lần liên hệ / store", of: (c: Customer) => contactBucket(c.tickets.length), empty: "Không có dữ liệu" },
+  plan: { title: "Plan PageFly", of: (c: Customer) => c.plan, empty: "Không có dữ liệu" },
+  shopify: { title: "Plan Shopify", of: (c: Customer) => c.shopifyPlan, empty: "Sheet chưa có dữ liệu plan Shopify" },
+  tenure: { title: "Thời gian dùng app", of: (c: Customer) => tenureBucket(c.tenure), empty: "Không có dữ liệu" },
+  country: { title: "Quốc gia", of: (c: Customer) => c.country, empty: "Sheet chưa có dữ liệu quốc gia" },
+  slot: { title: "Mức dùng slot", of: slotBucket, empty: "Sheet chưa có dữ liệu slot / trang" },
+  region: { title: "Khu vực (theo múi giờ)", of: (c: Customer) => region(c.timezone), empty: "Sheet chưa có cột timezone" },
+} as const;
+type DimKey = keyof typeof DIMS;
+const LIST_ANCHOR = "#danh-sach-khach";
 
 export default function Page(props: PageProps<"/customers">) {
   return (
@@ -55,7 +89,8 @@ async function Customers({ searchParams }: { searchParams: Promise<SearchParams>
   const prevCustomers = q.prev ? buildCustomers(ds.tickets, prev, q.prev.from, ds.loadedAt) : [];
 
   // KPI
-  const kpi = (label: string, current: number | null, previous: number | null, format: "count" | "pct" | "money", polarity: "up-good" | "down-good" | "neutral", hint: string) => ({
+  const kpi = (key: KpiKey, label: string, current: number | null, previous: number | null, format: "count" | "pct" | "money", polarity: "up-good" | "down-good" | "neutral", hint: string) => ({
+    key,
     label,
     hint,
     format,
@@ -64,14 +99,14 @@ async function Customers({ searchParams }: { searchParams: Promise<SearchParams>
   const share = (list: Customer[], f: (c: Customer) => boolean) => (list.length ? list.filter(f).length / list.length : null);
   const sumPrice = (list: Customer[], f: (c: Customer) => boolean = () => true) => list.filter(f).reduce((s, c) => s + (c.price ?? 0), 0);
   const kpis = [
-    kpi("Store liên hệ", customers.length, prevCustomers.length, "count", "neutral", "Số store khác nhau có ít nhất 1 ticket trong khoảng"),
-    kpi("Khách lần đầu liên hệ", customers.filter((c) => c.isNew).length, prevCustomers.filter((c) => c.isNew).length, "count", "neutral", "Lần liên hệ đầu tiên trong toàn bộ dữ liệu rơi vào khoảng này"),
-    kpi("Tỷ lệ liên hệ lặp lại", share(customers, (c) => c.tickets.length >= 2), share(prevCustomers, (c) => c.tickets.length >= 2), "pct", "down-good", "% store liên hệ từ 2 lần trở lên trong khoảng"),
-    kpi("Nguy cơ cao", customers.filter((c) => c.segment === "risk").length, prevCustomers.filter((c) => c.segment === "risk").length, "count", "down-good", SEGMENTS.risk.hint),
-    kpi("Doanh thu rủi ro /tháng", sumPrice(customers, (c) => c.segment === "risk"), sumPrice(prevCustomers, (c) => c.segment === "risk"), "money", "down-good", "Tổng giá plan của store nhóm Nguy cơ cao"),
-    kpi("Tiềm năng upsell", customers.filter((c) => c.segment === "upsell").length, prevCustomers.filter((c) => c.segment === "upsell").length, "count", "up-good", SEGMENTS.upsell.hint),
-    kpi("Store trả phí", share(customers, (c) => (c.price ?? 0) > 0), share(prevCustomers, (c) => (c.price ?? 0) > 0), "pct", "neutral", "% store có giá plan > 0"),
-    kpi("Doanh thu đang phục vụ /tháng", sumPrice(customers), sumPrice(prevCustomers), "money", "neutral", "Tổng giá plan của các store đã liên hệ"),
+    kpi("stores", "Store liên hệ", customers.length, prevCustomers.length, "count", "neutral", "Số store khác nhau có ít nhất 1 ticket trong khoảng"),
+    kpi("new", "Khách lần đầu liên hệ", customers.filter((c) => c.isNew).length, prevCustomers.filter((c) => c.isNew).length, "count", "neutral", "Lần liên hệ đầu tiên trong toàn bộ dữ liệu rơi vào khoảng này"),
+    kpi("repeat", "Tỷ lệ liên hệ lặp lại", share(customers, (c) => c.tickets.length >= 2), share(prevCustomers, (c) => c.tickets.length >= 2), "pct", "down-good", "% store liên hệ từ 2 lần trở lên trong khoảng"),
+    kpi("risk", "Nguy cơ cao", customers.filter((c) => c.segment === "risk").length, prevCustomers.filter((c) => c.segment === "risk").length, "count", "down-good", SEGMENTS.risk.hint),
+    kpi("revenue_risk", "Doanh thu rủi ro /tháng", sumPrice(customers, (c) => c.segment === "risk"), sumPrice(prevCustomers, (c) => c.segment === "risk"), "money", "down-good", "Tổng giá plan của store nhóm Nguy cơ cao"),
+    kpi("upsell", "Tiềm năng upsell", customers.filter((c) => c.segment === "upsell").length, prevCustomers.filter((c) => c.segment === "upsell").length, "count", "up-good", SEGMENTS.upsell.hint),
+    kpi("paid", "Store trả phí", share(customers, (c) => (c.price ?? 0) > 0), share(prevCustomers, (c) => (c.price ?? 0) > 0), "pct", "neutral", "% store có giá plan > 0"),
+    kpi("revenue", "Doanh thu đang phục vụ /tháng", sumPrice(customers), sumPrice(prevCustomers), "money", "neutral", "Tổng giá plan của các store đã liên hệ"),
   ];
 
   // Biểu đồ theo thời gian
@@ -100,14 +135,18 @@ async function Customers({ searchParams }: { searchParams: Promise<SearchParams>
   // Danh sách
   const seg = typeof sp.seg === "string" ? sp.seg : "all";
   const search = (typeof sp.q === "string" ? sp.q : "").toLowerCase();
+  const kpiKey = typeof sp.kpi === "string" && sp.kpi in KPI_MATCH ? (sp.kpi as KpiKey) : null;
+  const dimFilters = (Object.keys(DIMS) as DimKey[]).flatMap((k) => (typeof sp[`d_${k}`] === "string" ? [[k, sp[`d_${k}`] as string] as const] : []));
   let list = customers.filter((c) => {
     if (seg === "repeat" && c.tickets.length < 2) return false;
     if (seg === "uninstalled" && c.uninstallAt == null) return false;
     if (seg in SEGMENTS && c.segment !== seg) return false;
+    if (kpiKey && !KPI_MATCH[kpiKey](c)) return false;
+    for (const [k, v] of dimFilters) if (DIMS[k].of(c) !== v) return false;
     if (search && ![c.domain, c.name, c.plan].some((v) => v?.toLowerCase().includes(search))) return false;
     return true;
   });
-  const sort = (typeof sp.sort === "string" && sp.sort in SORTS ? sp.sort : "contacts") as SortKey;
+  const sort = (typeof sp.sort === "string" && sp.sort in SORTS ? sp.sort : kpiKey === "revenue" || kpiKey === "revenue_risk" ? "price" : "contacts") as SortKey;
   const dir = sp.dir === "asc" ? 1 : -1;
   list = [...list].sort((a, b) => (SORTS[sort](a) - SORTS[sort](b)) * dir || b.tickets.length - a.tickets.length);
   const pages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
@@ -139,7 +178,12 @@ async function Customers({ searchParams }: { searchParams: Promise<SearchParams>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
-          <Panel key={k.label} className="p-4" title={k.hint}>
+          <Link
+            key={k.label}
+            href={hrefWith("/customers", sp, { kpi: kpiKey === k.key ? null : k.key, seg: null, page: null }) + LIST_ANCHOR}
+            title={k.hint}
+            className={cx("block rounded-[20px] border bg-pf-card p-4 shadow-pf-card transition-colors", kpiKey === k.key ? "border-pf-primary-hi/70 bg-pf-primary/[.08]" : "border-pf-border hover:border-pf-primary-hi/50")}
+          >
             <div className="text-[12px] font-semibold text-pf-muted">{k.label}</div>
             <div className="tabular mt-2 font-display text-[28px] font-bold leading-none tracking-[-0.03em] text-white">
               {k.format === "pct" ? (k.change.current == null ? "—" : `${Math.round(k.change.current * 100)}%`) : k.format === "money" ? `$${Math.round(k.change.current ?? 0).toLocaleString("vi-VN")}` : (k.change.current ?? 0).toLocaleString("vi-VN")}
@@ -154,7 +198,7 @@ async function Customers({ searchParams }: { searchParams: Promise<SearchParams>
                 <span className="text-pf-faint">{k.hint}</span>
               )}
             </div>
-          </Panel>
+          </Link>
         ))}
       </div>
 
@@ -179,49 +223,53 @@ async function Customers({ searchParams }: { searchParams: Promise<SearchParams>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Panel className="p-4 sm:p-5">
           <PanelTitle title="Nhóm khách" note="Theo điểm sức khoẻ và tín hiệu" />
-          <BarList items={(Object.keys(SEGMENTS) as Segment[]).map((s) => ({ key: SEGMENTS[s].label, count: segCounts[s], share: customers.length ? segCounts[s] / customers.length : 0 }))} hrefFor={(k) => hrefWith("/customers", sp, { seg: (Object.keys(SEGMENTS) as Segment[]).find((s) => SEGMENTS[s].label === k), page: null })} />
+          <BarList items={(Object.keys(SEGMENTS) as Segment[]).map((s) => ({ key: SEGMENTS[s].label, count: segCounts[s], share: customers.length ? segCounts[s] / customers.length : 0 }))} hrefFor={(k) => hrefWith("/customers", sp, { seg: (Object.keys(SEGMENTS) as Segment[]).find((s) => SEGMENTS[s].label === k), kpi: null, page: null }) + LIST_ANCHOR} active={seg in SEGMENTS ? SEGMENTS[seg as Segment].label : undefined} />
         </Panel>
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Số lần liên hệ / store" />
-          <BarList items={toBuckets(customers, (c) => contactBucket(c.tickets.length)).sort((a, b) => a.key.localeCompare(b.key, "vi", { numeric: true }))} />
-        </Panel>
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Plan PageFly" />
-          <BarList items={toBuckets(customers, (c) => c.plan)} />
-        </Panel>
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Plan Shopify" />
-          <BarList items={toBuckets(customers, (c) => c.shopifyPlan)} emptyText="Sheet chưa có dữ liệu plan Shopify" />
-        </Panel>
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Thời gian dùng app" />
-          <BarList items={toBuckets(customers, (c) => tenureBucket(c.tenure))} />
-        </Panel>
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Quốc gia" />
-          <BarList items={toBuckets(customers, (c) => c.country)} emptyText="Sheet chưa có dữ liệu quốc gia" />
-        </Panel>
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Mức dùng slot" note="Trang đã publish so với slot tối đa của plan" />
-          <BarList
-            items={toBuckets(customers, (c) => {
-              if (c.maxSlot === Infinity) return "Không giới hạn slot";
-              if (c.pagesPublished == null || !c.maxSlot) return null;
-              const r = c.pagesPublished / c.maxSlot;
-              return r >= 1 ? "Đã dùng hết slot" : r >= 0.8 ? "Dùng ≥ 80% slot" : r >= 0.5 ? "Dùng 50–79% slot" : "Dùng < 50% slot";
-            })}
-            emptyText="Sheet chưa có dữ liệu slot / trang"
-          />
-        </Panel>
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Khu vực (theo múi giờ)" />
-          <BarList items={toBuckets(customers, (c) => region(c.timezone))} emptyText="Sheet chưa có cột timezone" />
-        </Panel>
+        {(Object.keys(DIMS) as DimKey[]).map((k) => {
+          const items = toBuckets(customers, DIMS[k].of);
+          return (
+            <Panel key={k} className="p-4 sm:p-5">
+              <PanelTitle title={DIMS[k].title} />
+              <BarList
+                items={k === "contacts" ? items.sort((a, b) => a.key.localeCompare(b.key, "vi", { numeric: true })) : items}
+                hrefFor={(v) => hrefWith("/customers", sp, { [`d_${k}`]: sp[`d_${k}`] === v ? null : v, page: null }) + LIST_ANCHOR}
+                active={typeof sp[`d_${k}`] === "string" ? (sp[`d_${k}`] as string) : undefined}
+                emptyText={DIMS[k].empty}
+              />
+            </Panel>
+          );
+        })}
       </div>
+
+      {/* Điểm neo: bấm ô KPI / biểu đồ → cuộn tới đây (bản tính doanh thu nếu có, rồi danh sách). */}
+      <div id="danh-sach-khach" className="-mb-5 scroll-mt-4" />
+      {(kpiKey === "revenue_risk" || kpiKey === "revenue") && <RevenueBreakdown customers={list} mode={kpiKey === "revenue_risk" ? "risk" : "served"} custHref={custHref} />}
 
       <Panel className="overflow-hidden">
         <div className="grid gap-3 px-4 pt-4 sm:px-5">
           <PanelTitle title={`Danh sách khách · ${list.length}`} note="Bấm vào một dòng để xem ngay các lần khách đã liên hệ (đủ cột như trang Chi tiết). Bấm “Xem” để mở đầy đủ mọi trường." />
+          {(kpiKey || dimFilters.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+              <span className="text-pf-faint">Đang lọc:</span>
+              {kpiKey && (
+                <Link href={hrefWith("/customers", sp, { kpi: null, page: null })} scroll={false} className="inline-flex items-center gap-1 rounded-full border border-pf-primary-hi/50 bg-pf-primary/14 px-2.5 py-1 font-semibold text-white hover:border-pf-primary-hi">
+                  {kpis.find((k) => k.key === kpiKey)?.label} <X size={12} />
+                </Link>
+              )}
+              {dimFilters.map(([k, v]) => (
+                <Link key={k} href={hrefWith("/customers", sp, { [`d_${k}`]: null, page: null })} scroll={false} className="inline-flex items-center gap-1 rounded-full border border-pf-primary-hi/50 bg-pf-primary/14 px-2.5 py-1 font-semibold text-white hover:border-pf-primary-hi">
+                  {DIMS[k].title}: {v} <X size={12} />
+                </Link>
+              ))}
+              <Link
+                href={hrefWith("/customers", sp, { kpi: null, page: null, ...Object.fromEntries((Object.keys(DIMS) as DimKey[]).map((k) => [`d_${k}`, null])) })}
+                scroll={false}
+                className="px-1.5 font-semibold text-pf-primary-hi hover:underline"
+              >
+                Xoá lọc
+              </Link>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <SearchBox initial={typeof sp.q === "string" ? sp.q : ""} placeholder="Tìm store, domain, plan…" />
           </div>
@@ -229,7 +277,7 @@ async function Customers({ searchParams }: { searchParams: Promise<SearchParams>
             {SEG_TABS.map(([key, label, n]) => (
               <Link
                 key={key}
-                href={hrefWith("/customers", sp, { seg: key === "all" ? null : key, page: null })}
+                href={hrefWith("/customers", sp, { seg: key === "all" ? null : key, kpi: null, page: null })}
                 scroll={false}
                 className={cx(
                   "rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors",

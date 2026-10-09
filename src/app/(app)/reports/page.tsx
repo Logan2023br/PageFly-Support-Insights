@@ -1,16 +1,14 @@
-import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Code2, Headset, Megaphone, type LucideIcon } from "lucide-react";
 import { TEAMS, type ReportTeam } from "@/lib/reports";
-import { PageHeader, Panel, Skeleton } from "@/components/ui";
-import { ArchiveSection } from "@/components/reports/archive-section";
+import { PageHeader, Panel } from "@/components/ui";
 
 const ICONS: Record<ReportTeam, LucideIcon> = { cs: Headset, dev: Code2, marketing: Megaphone };
 
 export default function ReportsPage() {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
-      <PageHeader eyebrow="Support Insights" title="Báo cáo" subtitle="Báo cáo theo team, xem theo tuần · tháng · quý · toàn bộ. Mỗi báo cáo xuất được ra Excel." />
+      <PageHeader eyebrow="Support Insights" title="Báo cáo" subtitle="Báo cáo theo team, xem theo tuần · tháng · quý · toàn bộ. Mỗi báo cáo xuất được ra Excel và có kho PDF lưu theo kỳ ở cuối trang team." />
       <div className="grid gap-3 md:grid-cols-3">
         {(Object.keys(TEAMS) as ReportTeam[]).map((team) => {
           const Icon = ICONS[team];
@@ -31,9 +29,6 @@ export default function ReportsPage() {
           );
         })}
       </div>
-      <Suspense fallback={<Skeleton className="h-[260px] rounded-[20px]" />}>
-        <ArchiveSection />
-      </Suspense>
     </div>
   );
 }

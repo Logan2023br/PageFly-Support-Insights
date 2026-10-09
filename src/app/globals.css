@@ -131,3 +131,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .grid > * {
   min-width: 0;
 }
+
+/* Mọi thứ bấm được hiện con trỏ bàn tay (Tailwind v4 mặc định để button là con trỏ thường). */
+a[href],
+button:not(:disabled),
+summary,
+select,
+[role="button"],
+[role="tab"],
+[aria-expanded],
+label:has(> input[type="checkbox"], > input[type="radio"]) {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}

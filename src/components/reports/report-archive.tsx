@@ -21,7 +21,7 @@ async function postGenerate(grain: ArchiveGrain, force: boolean): Promise<string
     const res = await fetch("/api/reports/archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ grain, force }) });
     const data = (await res.json()) as { error?: string; created?: string[]; skipped?: string[]; period?: { label: string } };
     if (!res.ok) return data.error ?? "Không tạo được báo cáo";
-    return data.created?.length ? `Đã tạo ${data.created.length} báo cáo ${data.period?.label}.` : `${data.period?.label} đã có đủ báo cáo (bấm "Tạo lại" để cập nhật).`;
+    return data.created?.length ? `Đã tạo báo cáo ${data.period?.label} (cho cả 3 team).` : `${data.period?.label} đã có đủ báo cáo (bấm "Tạo lại" để cập nhật).`;
   } catch {
     return "Lỗi mạng, thử lại sau.";
   }
@@ -71,7 +71,7 @@ export function ReportArchive({ entries, isAdmin, team: fixedTeam, writable }: {
             <Archive size={17} strokeWidth={1.75} className="text-pf-primary-hi" /> Kho báo cáo PDF
           </h2>
           <p className="mt-0.5 text-[12px] text-pf-muted">
-            Tự tạo lúc 01:00 sáng: thứ 2 → báo cáo tuần trước · ngày 1 → tháng trước · đầu quý → quý trước · 1/1 → năm trước. Mỗi kỳ có đủ 3 team CS, Dev, Marketing.
+            {fixedTeam ? `Báo cáo PDF của ${TEAM_LABEL[fixedTeam]}. ` : ""}Tự tạo lúc 01:00 sáng: thứ 2 → báo cáo tuần trước · ngày 1 → tháng trước · đầu quý → quý trước · 1/1 → năm trước.
           </p>
         </div>
         {isAdmin && (
