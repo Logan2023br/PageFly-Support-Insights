@@ -19,6 +19,7 @@ import { fmtPerf, ScoreBadge } from "@/components/perf/perf-ui";
 import { resolutionTone } from "@/components/tickets/mini-table";
 import { AlertBadge, Badge, buttonClass, cx, Delta, Empty, PageHeader, PageSkeleton, Panel, PanelTitle, Skeleton } from "@/components/ui";
 import { ArchiveSection } from "@/components/reports/archive-section";
+import { ScrollToArchive } from "@/components/reports/scroll-to-archive";
 
 export default function Page(props: PageProps<"/reports/[team]">) {
   return (
@@ -54,9 +55,12 @@ async function ReportPage({ params, searchParams }: { params: Promise<{ team: st
         title={`Báo cáo ${TEAMS[team].title}`}
         subtitle={`${TEAMS[team].description} · Dành cho ${TEAMS[team].audience}`}
         actions={
-          <a href={`/api/export?kind=report&team=${team}&grain=${grain}`} className={buttonClass("primary", "sm")}>
-            <Download size={14} strokeWidth={1.75} /> Xuất Excel
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <ScrollToArchive />
+            <a href={`/api/export?kind=report&team=${team}&grain=${grain}`} className={buttonClass("primary", "sm")}>
+              <Download size={14} strokeWidth={1.75} /> Xuất Excel
+            </a>
+          </div>
         }
       />
 

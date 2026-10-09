@@ -1,5 +1,5 @@
 // Kỳ báo cáo lưu trữ: tuần (thứ 2 → CN), tháng, quý, năm — luôn là kỳ ĐÃ KẾT THÚC tính đến ngày tạo.
-import { addDays } from "@/lib/data/parse";
+import { addDays, diffDays } from "@/lib/data/parse";
 import { lastDayOfMonth, weekStart } from "@/lib/reports";
 
 import type { ArchiveGrain } from "./grains";
@@ -7,7 +7,8 @@ import type { ArchiveGrain } from "./grains";
 export { ARCHIVE_GRAIN_LABEL, ARCHIVE_GRAINS, type ArchiveGrain } from "./grains";
 
 export interface ArchivePeriod {
-  grain: ArchiveGrain;
+  /** "custom" = khoảng ngày do người dùng tự chọn khi tạo báo cáo thủ công. */
+  grain: ArchiveGrain | "custom";
   from: string;
   to: string;
   /** Nhãn hiển thị, vd "Tuần 29/09 – 05/10/2026", "Tháng 9/2026", "Quý 3/2026", "Năm 2025". */
@@ -66,8 +67,19 @@ export function lastClosed(grain: ArchiveGrain, today: string): ArchivePeriod {
   }
 }
 
-/** Kỳ liền trước (để so sánh). */
+const dmy = (k: string) => k.split("-").reverse().join("/");
+
+/** Khoảng ngày tự chọn [from, to] (cả 2 đầu). */
+export function customPeriod(from: string, to: string): ArchivePeriod {
+  return { grain: "custom", from, to, year: +to.slice(0, 4), label: from === to ? dmy(from) : `${dmy(from)} – ${dmy(to)}` };
+}
+
+/** Kỳ liền trước (để so sánh). Khoảng tự chọn → khoảng cùng số ngày ngay trước đó. */
 export function previousOf(p: ArchivePeriod): ArchivePeriod {
+  if (p.grain === "custom") {
+    const len = diffDays(p.from, p.to) + 1;
+    return customPeriod(addDays(p.from, -len), addDays(p.from, -1));
+  }
   return lastClosed(p.grain, p.from);
 }
 

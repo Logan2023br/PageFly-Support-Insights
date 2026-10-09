@@ -33,8 +33,10 @@ export interface ReportSnapshot {
   period: ArchivePeriod;
   previous: ArchivePeriod;
   generatedAt: number;
-  /** true = tạo theo lịch, false = admin bấm tạo. */
+  /** true = tạo theo lịch, false = người dùng tự tạo. */
   auto?: boolean;
+  /** false = chỉ số liệu kỳ này, không có cột / phần so sánh với kỳ trước. */
+  compare: boolean;
   sourceLabel: string;
   totals: { tickets: number; stores: number; prevTickets: number };
   headline: SnapshotMetric[];
@@ -45,7 +47,7 @@ export interface ReportSnapshot {
 const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 const short = (s: string | null | undefined, n = 90) => (!s ? "—" : s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-export function buildSnapshot(all: Ticket[], team: ReportTeam, period: ArchivePeriod, today: string, sourceLabel: string): ReportSnapshot {
+export function buildSnapshot(all: Ticket[], team: ReportTeam, period: ArchivePeriod, today: string, sourceLabel: string, compare = true): ReportSnapshot {
   const previous = previousOf(period);
   const cur = all.filter((t) => inPeriod(t, period));
   const prev = all.filter((t) => inPeriod(t, previous));
@@ -74,6 +76,7 @@ export function buildSnapshot(all: Ticket[], team: ReportTeam, period: ArchivePe
     period,
     previous,
     generatedAt: Date.now(),
+    compare,
     sourceLabel,
     totals: { tickets: cur.length, stores: new Set(cur.map((t) => t.store_domain).filter(Boolean)).size, prevTickets: prev.length },
     headline,

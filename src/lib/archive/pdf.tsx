@@ -2,6 +2,7 @@ import "server-only";
 import path from "node:path";
 import { Document, Font, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 import { formatVnDateTime } from "@/lib/data/parse";
+import { MIN_ALERT_SAMPLE as MIN_SAMPLE } from "@/lib/metrics/compute";
 import { ARCHIVE_GRAIN_LABEL } from "./periods";
 import type { ReportSnapshot, SnapshotMetric, SnapshotTable } from "./snapshot";
 
@@ -57,7 +58,11 @@ const toneColor = (m: SnapshotMetric) => (m.tone === "good" ? C.good : m.tone ==
 const alertText = (m: SnapshotMetric) => (m.alert === "critical" ? "Báo động" : m.alert === "warning" ? "Cần theo dõi" : m.tone === "good" ? "Tốt lên" : "");
 
 function ReportDoc({ r }: { r: ReportSnapshot }) {
-  const grain = ARCHIVE_GRAIN_LABEL[r.period.grain].toLowerCase();
+  const grain = r.period.grain === "custom" ? "tự tạo" : ARCHIVE_GRAIN_LABEL[r.period.grain].toLowerCase();
+  const all = r.sections.flatMap((x) => x.metrics);
+  const enough = r.totals.tickets >= MIN_SAMPLE && r.totals.prevTickets >= MIN_SAMPLE;
+  const better = all.filter((m) => m.tone === "good" && m.delta);
+  const worse = all.filter((m) => (m.alert || m.tone === "bad") && m.delta);
   return (
     <Document title={`Báo cáo ${grain} ${r.teamTitle} · ${r.period.label}`} author="PageFly Insights" subject={`Báo cáo ${r.teamTitle}`}>
       <Page size="A4" style={s.page}>
@@ -67,10 +72,11 @@ function ReportDoc({ r }: { r: ReportSnapshot }) {
             {r.teamTitle} · {r.period.label}
           </Text>
           <Text style={s.subtitle}>
-            Kỳ báo cáo {r.period.from.split("-").reverse().join("/")} – {r.period.to.split("-").reverse().join("/")} · so với {r.previous.label} · Dành cho {r.audience}
+            Kỳ báo cáo {r.period.from.split("-").reverse().join("/")} – {r.period.to.split("-").reverse().join("/")}
+            {r.compare ? ` · so với ${r.previous.label}` : ""} · Dành cho {r.audience}
           </Text>
           <Text style={s.meta}>
-            {r.totals.tickets} ticket · {r.totals.stores} store (kỳ trước {r.totals.prevTickets} ticket) · {r.auto === false ? "Tạo thủ công" : "Tạo tự động"} lúc {formatVnDateTime(r.generatedAt)} · Nguồn: {r.sourceLabel}
+            {r.totals.tickets} ticket · {r.totals.stores} store{r.compare ? ` (kỳ trước ${r.totals.prevTickets} ticket)` : ""} · {r.auto === false ? "Tạo thủ công" : "Tạo tự động"} lúc {formatVnDateTime(r.generatedAt)} · Nguồn: {r.sourceLabel}
           </Text>
         </View>
 
@@ -80,19 +86,40 @@ function ReportDoc({ r }: { r: ReportSnapshot }) {
             <View key={m.label} style={[s.card, m.alert === "critical" ? { borderColor: "#f1b5b0" } : {}]} wrap={false}>
               <Text style={s.cardLabel}>{m.label}</Text>
               <Text style={s.cardValue}>{m.current}</Text>
-              <Text style={s.cardFoot}>
-                {m.delta ? <Text style={{ color: toneColor(m), fontWeight: 600 }}>{m.delta} </Text> : null}
-                kỳ trước {m.previous}
-                {m.alert ? <Text style={{ color: m.alert === "critical" ? C.bad : C.warn, fontWeight: 600 }}> · {alertText(m)}</Text> : null}
-              </Text>
+              {r.compare ? (
+                <Text style={s.cardFoot}>
+                  {m.delta ? <Text style={{ color: toneColor(m), fontWeight: 600 }}>{m.delta} </Text> : null}
+                  kỳ trước {m.previous}
+                  {m.alert ? <Text style={{ color: m.alert === "critical" ? C.bad : C.warn, fontWeight: 600 }}> · {alertText(m)}</Text> : null}
+                </Text>
+              ) : null}
             </View>
           ))}
         </View>
 
+        {r.compare ? (
+          <View>
+            <Text style={s.h2}>So sánh với kỳ trước ({r.previous.label})</Text>
+            <Text style={s.note}>
+              Kỳ này {r.totals.tickets} ticket, kỳ trước {r.totals.prevTickets} ticket. Chỉ đánh giá tăng/giảm khi mỗi kỳ có từ 10 ticket.
+            </Text>
+            {enough ? (
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <CompareList title={`Tốt lên · ${better.length}`} color={C.good} items={better} />
+                <CompareList title={`Xấu đi / cần chú ý · ${worse.length}`} color={C.bad} items={worse} />
+              </View>
+            ) : (
+              <Text style={{ fontSize: 8, color: C.warn }}>
+                {r.totals.prevTickets < MIN_SAMPLE ? "Kỳ trước" : "Kỳ này"} có dưới {MIN_SAMPLE} ticket nên chưa đủ dữ liệu để kết luận tốt lên / xấu đi — số liệu từng kỳ vẫn có ở bảng bên dưới.
+              </Text>
+            )}
+          </View>
+        ) : null}
+
         <Text style={s.h2}>Toàn bộ chỉ số</Text>
         <View style={s.table}>
           <View style={s.tr} fixed>
-            {["Chỉ số", "Kỳ này", "Kỳ trước", "Thay đổi", "Đánh giá"].map((h, i) => (
+            {(r.compare ? ["Chỉ số", "Kỳ này", "Kỳ trước", "Thay đổi", "Đánh giá"] : ["Chỉ số", "Kỳ này"]).map((h, i) => (
               <Text key={h} style={[s.th, { flex: i === 0 ? 3 : 1.1, textAlign: i === 0 ? "left" : "right" }]}>
                 {h}
               </Text>
@@ -105,9 +132,13 @@ function ReportDoc({ r }: { r: ReportSnapshot }) {
                 <View key={m.label} style={s.tr} wrap={false}>
                   <Text style={[s.td, { flex: 3, color: C.ink, fontWeight: 600 }]}>{m.label}</Text>
                   <Text style={[s.td, { flex: 1.1, textAlign: "right", color: C.ink, fontWeight: 600 }]}>{m.current}</Text>
-                  <Text style={[s.td, { flex: 1.1, textAlign: "right" }]}>{m.previous}</Text>
-                  <Text style={[s.td, { flex: 1.1, textAlign: "right", color: toneColor(m) }]}>{m.delta ?? "—"}</Text>
-                  <Text style={[s.td, { flex: 1.1, textAlign: "right", color: m.alert === "critical" ? C.bad : m.alert ? C.warn : C.good, fontWeight: 600 }]}>{alertText(m)}</Text>
+                  {r.compare ? (
+                    <>
+                      <Text style={[s.td, { flex: 1.1, textAlign: "right" }]}>{m.previous}</Text>
+                      <Text style={[s.td, { flex: 1.1, textAlign: "right", color: toneColor(m) }]}>{m.delta ?? "—"}</Text>
+                      <Text style={[s.td, { flex: 1.1, textAlign: "right", color: m.alert === "critical" ? C.bad : m.alert ? C.warn : C.good, fontWeight: 600 }]}>{enough ? alertText(m) : ""}</Text>
+                    </>
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -126,6 +157,24 @@ function ReportDoc({ r }: { r: ReportSnapshot }) {
         </View>
       </Page>
     </Document>
+  );
+}
+
+function CompareList({ title, color, items }: { title: string; color: string; items: SnapshotMetric[] }) {
+  return (
+    <View style={{ flex: 1, borderWidth: 1, borderColor: C.line, borderRadius: 8, padding: 8 }} wrap={false}>
+      <Text style={{ fontSize: 8, fontWeight: 700, color, marginBottom: 4 }}>{title}</Text>
+      {items.length ? (
+        items.map((m) => (
+          <Text key={m.label} style={{ fontSize: 7.8, marginBottom: 2 }}>
+            <Text style={{ color: C.ink, fontWeight: 600 }}>{m.label}</Text>: {m.current} <Text style={{ color: toneColor(m), fontWeight: 600 }}>({m.delta})</Text>
+            <Text style={{ color: C.faint }}> · kỳ trước {m.previous}</Text>
+          </Text>
+        ))
+      ) : (
+        <Text style={{ fontSize: 7.8, color: C.faint }}>Không có.</Text>
+      )}
+    </View>
   );
 }
 

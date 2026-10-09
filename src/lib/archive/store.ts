@@ -3,7 +3,7 @@ import { loadDataset } from "@/lib/data";
 import { vnDayKey } from "@/lib/data/parse";
 import { kv } from "@/lib/store/kv";
 import { TEAMS, type ReportTeam } from "@/lib/reports";
-import { lastClosed, type ArchiveGrain, type ArchivePeriod } from "./periods";
+import { customPeriod, lastClosed, type ArchiveGrain, type ArchivePeriod } from "./periods";
 import { renderReportPdf } from "./pdf";
 import { buildSnapshot } from "./snapshot";
 
@@ -14,16 +14,30 @@ const pdfKey = (id: string) => `reports:archive:pdf:${id}`;
 export interface ArchiveEntry {
   id: string;
   team: ReportTeam;
-  grain: ArchiveGrain;
+  /** "custom" = báo cáo tự tạo theo khoảng ngày tự chọn. */
+  grain: ArchiveGrain | "custom";
   from: string;
   to: string;
   label: string;
   year: number;
   createdAt: number;
-  /** true = do lịch tự động tạo; false = admin bấm tạo. */
+  /** true = báo cáo tự động (theo lịch, cả 3 team); false = báo cáo tự tạo (riêng 1 team). */
   auto: boolean;
+  /** Báo cáo tự tạo: có phần so sánh với kỳ trước không (tự động luôn có). */
+  compare?: boolean;
+  /** Người tạo báo cáo tự tạo. */
+  createdBy?: string;
   bytes: number;
   tickets: number;
+}
+
+async function addToIndex(added: ArchiveEntry[]) {
+  if (!added.length) return;
+  const store = kv();
+  // Đọc lại mục lục ngay trước khi ghi để không đè mục do lần chạy khác vừa thêm.
+  const latest = (await store.get<ArchiveEntry[]>(INDEX_KEY)) ?? [];
+  const ids = new Set(added.map((a) => a.id));
+  await store.set(INDEX_KEY, [...latest.filter((e) => !ids.has(e.id)), ...added]);
 }
 
 export const archiveId = (team: ReportTeam, grain: ArchiveGrain, from: string) => `${team}-${grain}-${from}`;
@@ -47,7 +61,7 @@ export interface GenerateResult {
 }
 
 /**
- * Tạo PDF cho cả 3 team của kỳ đã kết thúc gần nhất (theo `grain`).
+ * Báo cáo tự động: tạo PDF cho cả 3 team của kỳ đã kết thúc gần nhất (theo `grain`).
  * Kỳ đã có file thì bỏ qua, trừ khi `force` (tạo lại với dữ liệu mới nhất).
  */
 export async function generateArchive(grain: ArchiveGrain, opts: { auto: boolean; force?: boolean; now?: number }): Promise<GenerateResult> {
@@ -73,13 +87,24 @@ export async function generateArchive(grain: ArchiveGrain, opts: { auto: boolean
     created.push(id);
   }
 
-  if (added.length) {
-    // Đọc lại mục lục ngay trước khi ghi để không đè mục do lần chạy khác vừa thêm.
-    const latest = (await store.get<ArchiveEntry[]>(INDEX_KEY)) ?? [];
-    const ids = new Set(added.map((a) => a.id));
-    await store.set(INDEX_KEY, [...latest.filter((e) => !ids.has(e.id)), ...added]);
-  }
+  await addToIndex(added);
   return { period, created, skipped };
+}
+
+/**
+ * Báo cáo tự tạo: chỉ cho 1 team, khoảng ngày tự chọn, tuỳ chọn so sánh với khoảng cùng độ dài ngay trước.
+ * Cùng team + khoảng + kiểu so sánh thì ghi đè bản cũ.
+ */
+export async function generateCustom(team: ReportTeam, from: string, to: string, opts: { compare: boolean; createdBy: string }): Promise<ArchiveEntry> {
+  const period = customPeriod(from, to);
+  const ds = await loadDataset({ force: true });
+  const snap = { ...buildSnapshot(ds.tickets, team, period, vnDayKey(Date.now()), ds.sourceLabel, opts.compare), auto: false };
+  const pdf = await renderReportPdf(snap);
+  const id = `${team}-custom-${from}-${to}${opts.compare ? "-cmp" : ""}`;
+  await kv().set(pdfKey(id), pdf.toString("base64"));
+  const entry: ArchiveEntry = { id, team, grain: "custom", from, to, label: period.label, year: period.year, createdAt: Date.now(), auto: false, compare: opts.compare, createdBy: opts.createdBy, bytes: pdf.length, tickets: snap.totals.tickets };
+  await addToIndex([entry]);
+  return entry;
 }
 
 export async function deleteArchive(id: string): Promise<boolean> {

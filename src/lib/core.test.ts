@@ -295,7 +295,7 @@ describe("Recap v11", () => {
   });
 });
 
-import { dueGrains, lastClosed, previousOf } from "@/lib/archive/periods";
+import { customPeriod, dueGrains, lastClosed, previousOf } from "@/lib/archive/periods";
 describe("Kho báo cáo", () => {
   it("kỳ đã đóng gần nhất", () => {
     expect(lastClosed("week", "2026-10-12")).toMatchObject({ from: "2026-10-05", to: "2026-10-11" }); // thứ 2
@@ -305,6 +305,11 @@ describe("Kho báo cáo", () => {
     expect(lastClosed("year", "2027-01-01")).toMatchObject({ from: "2026-01-01", to: "2026-12-31", label: "Năm 2026" });
     expect(previousOf(lastClosed("week", "2026-10-12"))).toMatchObject({ from: "2026-09-28", to: "2026-10-04" });
     expect(previousOf(lastClosed("month", "2026-03-01"))).toMatchObject({ from: "2026-01-01", to: "2026-01-31" });
+  });
+  it("khoảng tự chọn so với khoảng cùng độ dài ngay trước", () => {
+    expect(customPeriod("2026-10-01", "2026-10-10")).toMatchObject({ grain: "custom", label: "01/10/2026 – 10/10/2026", year: 2026 });
+    expect(previousOf(customPeriod("2026-10-01", "2026-10-10"))).toMatchObject({ from: "2026-09-21", to: "2026-09-30" });
+    expect(previousOf(customPeriod("2026-10-05", "2026-10-05"))).toMatchObject({ from: "2026-10-04", to: "2026-10-04" });
   });
   it("lịch tạo báo cáo", () => {
     expect(dueGrains("2026-10-12")).toEqual(["week"]); // thứ 2
