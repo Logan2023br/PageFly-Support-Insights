@@ -36,7 +36,24 @@ const inputCls = "h-8 rounded-[10px] border border-pf-border bg-pf-bg-deep px-2 
  * - Tự động: hệ thống tạo theo tuần / tháng / quý / năm, cùng lúc cho cả 3 team.
  * - Tự tạo: người dùng chọn khoảng ngày (tuỳ chọn so sánh với kỳ trước), chỉ tạo cho team này.
  */
-export function ReportArchive({ entries: allEntries, isAdmin, username, team, today, writable }: { entries: ArchiveEntry[]; isAdmin: boolean; username: string; team: Team; today: string; writable: boolean }) {
+export function ReportArchive({
+  entries: allEntries,
+  latest,
+  isAdmin,
+  username,
+  team,
+  today,
+  writable,
+}: {
+  entries: ArchiveEntry[];
+  /** Kỳ đã kết thúc gần nhất của từng loại và có đang thiếu báo cáo tự động không. */
+  latest: Record<ArchiveGrain, { label: string; missing: boolean }>;
+  isAdmin: boolean;
+  username: string;
+  team: Team;
+  today: string;
+  writable: boolean;
+}) {
   const router = useRouter();
   const entries = useMemo(() => allEntries.filter((e) => e.team === team), [allEntries, team]);
   const [tab, setTab] = useState<Tab>("auto");
@@ -51,7 +68,7 @@ export function ReportArchive({ entries: allEntries, isAdmin, username, team, to
   const [to, setTo] = useState(today);
   const [compare, setCompare] = useState(true);
   // Admin tạo bù báo cáo tự động
-  const [genGrain, setGenGrain] = useState<ArchiveGrain>("week");
+  const [genGrain, setGenGrain] = useState<ArchiveGrain>(() => ARCHIVE_GRAINS.find((g) => latest[g].missing) ?? "week");
 
   const tabEntries = useMemo(() => entries.filter((e) => tabOf(e) === tab), [entries, tab]);
   const years = useMemo(() => [...new Set(tabEntries.map((e) => e.year))].sort((a, b) => b - a), [tabEntries]);
@@ -101,16 +118,11 @@ export function ReportArchive({ entries: allEntries, isAdmin, username, team, to
       if (ok) setFormOpen(false);
       router.refresh();
     });
-  const createAuto = (force: boolean) =>
+  const regen = latest[genGrain];
+  const createAuto = () =>
     start(async () => {
-      const { ok, data } = await post({ grain: genGrain, force });
-      setMsg(
-        !ok
-          ? (data.error ?? "Không tạo được báo cáo")
-          : data.created?.length
-            ? `Đã tạo báo cáo tự động ${data.period?.label} cho cả 3 team.`
-            : `${data.period?.label} đã có báo cáo (bấm "Tạo lại" để cập nhật số liệu).`,
-      );
+      const { ok, data } = await post({ grain: genGrain });
+      setMsg(!ok ? (data.error ?? "Không tạo được báo cáo") : data.created?.length ? `Đã tạo lại báo cáo tự động ${data.period?.label} (${data.created.length} team còn thiếu).` : `${data.period?.label} đã có đủ báo cáo.`);
       router.refresh();
     });
   const remove = (id: string) =>
@@ -259,19 +271,23 @@ export function ReportArchive({ entries: allEntries, isAdmin, username, team, to
           />
         </label>
         {tab === "auto" && isAdmin && (
-          <div className="ml-auto flex flex-wrap items-center gap-1.5" title="Admin: tạo bù báo cáo tự động của kỳ đã kết thúc gần nhất (cho cả 3 team)">
-            <select value={genGrain} onChange={(e) => setGenGrain(e.target.value as ArchiveGrain)} className={inputCls} aria-label="Kỳ cần tạo bù">
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            <select value={genGrain} onChange={(e) => setGenGrain(e.target.value as ArchiveGrain)} className={inputCls} aria-label="Kỳ cần tạo lại">
               {ARCHIVE_GRAINS.map((g) => (
                 <option key={g} value={g}>
-                  {ARCHIVE_GRAIN_LABEL[g]} gần nhất
+                  {latest[g].label}
+                  {latest[g].missing ? " · chưa có" : " · đã có"}
                 </option>
               ))}
             </select>
-            <button type="button" disabled={pending || !writable} onClick={() => createAuto(false)} className="inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-pf-border px-3 text-[12px] font-semibold text-pf-body hover:border-pf-border-hi disabled:opacity-50">
-              {pending ? <Loader2 size={13} className="animate-spin" /> : null} Tạo bù
-            </button>
-            <button type="button" disabled={pending || !writable} onClick={() => createAuto(true)} className="inline-flex h-8 items-center rounded-[10px] border border-pf-border px-3 text-[12px] font-semibold text-pf-body hover:border-pf-border-hi disabled:opacity-50" title="Tạo lại với dữ liệu mới nhất, ghi đè bản cũ">
-              Tạo lại
+            <button
+              type="button"
+              disabled={pending || !writable || !regen.missing}
+              onClick={createAuto}
+              title={regen.missing ? `${regen.label} chưa có báo cáo tự động (lịch tự động có thể bị lỗi) — bấm để tạo lại cho cả 3 team` : `${regen.label} đã có báo cáo tự động, không cần tạo lại`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-[10px] bg-pf-primary px-3 text-[12px] font-semibold text-white disabled:bg-transparent disabled:text-pf-faint disabled:ring-1 disabled:ring-pf-border"
+            >
+              {pending ? <Loader2 size={13} className="animate-spin" /> : null} Tạo lại
             </button>
           </div>
         )}
