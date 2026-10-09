@@ -65,6 +65,12 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Không bao giờ cuộn ngang cả trang; bảng rộng tự cuộn trong khung riêng. `clip` (không phải hidden) để sidebar sticky vẫn chạy. */
+html,
+body {
+  overflow-x: clip;
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }

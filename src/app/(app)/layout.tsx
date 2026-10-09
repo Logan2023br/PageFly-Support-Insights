@@ -14,7 +14,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <Suspense fallback={<Sidebar footer={<Skeleton className="hidden h-[150px] rounded-[16px] lg:block" />} />}>
         <SidebarWithUser />
       </Suspense>
-      <main className="min-w-0 flex-1 pt-4 lg:pt-0">
+      <main className="min-w-0 flex-1 pt-4 [overflow-x:clip] lg:pt-0">
         <div className="relative z-40 mb-3 flex justify-end">
           <NotificationBell />
         </div>
