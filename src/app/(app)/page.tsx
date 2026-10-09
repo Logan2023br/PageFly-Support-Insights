@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { Download, ListFilter } from "lucide-react";
 import { earliestDay, getDataset } from "@/lib/data";
 import { buildCompare, buildDashboard, metricTrend } from "@/lib/dashboard";
-import { bucketSeries, type DayPoint } from "@/lib/metrics/compute";
+import type { DayPoint } from "@/lib/metrics/compute";
 import { METRIC_BY_KEY } from "@/lib/metrics/defs";
 import { customerSummary, ticketSummary } from "@/lib/metrics/summaries";
 import { hrefWith, parseQuery, periodLabel, RANGE_LABELS, selectTickets, type SearchParams } from "@/lib/query";
@@ -14,7 +14,7 @@ import { StoreList } from "@/components/dashboard/store-list";
 import { buildCustomers } from "@/lib/customers";
 import { actionItems } from "@/lib/alerts";
 import { SummaryBlocks } from "@/components/dashboard/summary-blocks";
-import { TrendChart, VolumeChart } from "@/components/charts/charts";
+import { TrendChart } from "@/components/charts/charts";
 import { BarList } from "@/components/charts/bar-list";
 import { MiniTable } from "@/components/tickets/mini-table";
 import { AiPanel } from "@/components/ai/ai-panel";
@@ -62,7 +62,6 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
   const prevLabel = q.prev ? periodLabel(q.prev) : null;
   const drillStores = tileKey === "stores" && drill ? buildCustomers(ds.tickets, drill, q.period.from, ds.loadedAt) : null;
   const drillTrend = tileKey ? metricTrend(METRIC_BY_KEY[tileKey], d.cur, d.prev, q) : null;
-  const series = bucketSeries(d.series);
   const compareOpen = sp.compare === "1" && q.prev;
   const cmp = compareOpen ? buildCompare(ds.tickets, q) : null;
   const toLine = (pts: DayPoint[]) => pts.map((p) => ({ day: p.day, v: p.total }));
@@ -166,18 +165,11 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
 
       <AiPanel kind="overview" params={scope} title="Nhận định AI cho khoảng thời gian này" />
 
-      <div className="grid gap-3 xl:grid-cols-[1.6fr_1fr]">
-        <Panel className="p-4 sm:p-5">
-          <PanelTitle title="Ticket theo ngày" note={series.length < d.series.length ? "Đã gộp theo tuần vì khoảng thời gian dài" : "Feedback · Issue · Improve"} />
-          <VolumeChart data={series} keys={q.cat === "all" ? ["Issue", "Feedback", "Improve"] : [q.cat]} />
-        </Panel>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Panel className="p-4 sm:p-5">
           <PanelTitle title="Nhóm issue" note="Bấm để xem danh sách" />
           <BarList items={d.breakdowns.category_issue} hrefFor={(k) => ticketsHref({ cat: "Issue", f_category_issue: k })} emptyText="Không có issue" />
         </Panel>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Panel className="p-4 sm:p-5">
           <PanelTitle title="Nguyên nhân gốc" />
           <BarList items={d.breakdowns.root_cause} hrefFor={(k) => ticketsHref({ f_root_cause: k })} />
