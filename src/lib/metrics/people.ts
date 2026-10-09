@@ -24,11 +24,14 @@ export interface FlStats {
   attention: number;
 }
 
-const avg = (vals: (number | null)[]) => {
-  const v = vals.filter((x): x is number => x != null);
-  return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null;
-};
 const ratio = (num: number, den: number) => (den ? num / den : null);
+/** Trung vị cho thời gian (vài ticket kéo dài nhiều ngày làm trung bình lệch). */
+const median = (vals: (number | null)[]) => {
+  const v = vals.filter((x): x is number => x != null).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
 
 /** Hiệu suất theo FL (người note recap = triggered_by). */
 export function flStats(ts: Ticket[]): FlStats[] {
@@ -54,9 +57,9 @@ export function flStats(ts: Ticket[]): FlStats[] {
         escalated: list.filter((t) => t.derived.handler !== "FL").length,
         devNeeded: list.filter((t) => t.derived.handler === "Dev").length,
         resolvedRate: ratio(withRes.filter((t) => t.derived.resolved).length, withRes.length),
-        firstReplyAvg: avg(list.map((t) => t.derived.firstReplySec)),
-        maxReplyAvg: avg(list.map((t) => t.time_pic_max_reply)),
-        handleAvg: avg(list.map((t) => t.total_time_handle)),
+        firstReplyAvg: median(list.map((t) => t.derived.firstReplySec)),
+        maxReplyAvg: median(list.map((t) => t.time_pic_max_reply)),
+        handleAvg: median(list.map((t) => t.total_time_handle_fl ?? t.total_time_handle)),
         csatGood: ratio(withCsat.filter((t) => t.csat === "Tốt").length, withCsat.length),
         angry: list.filter((t) => t.derived.moodEnd === "Angry").length,
         moodWorsened: list.filter((t) => t.derived.moodWorsened).length,
@@ -102,8 +105,8 @@ export function picStats(ts: Ticket[], role: "TS" | "Dev"): PicStats[] {
         role,
         tickets: list.length,
         resolvedRate: ratio(withRes.filter((t) => t.derived.resolved).length, withRes.length),
-        joinWaitAvg: avg(list.map((t) => t.derived.supportWaitSec)),
-        handleAvg: avg(list.map((t) => t.total_time_handle)),
+        joinWaitAvg: median(list.map((t) => t.derived.supportWaitSec)),
+        handleAvg: median(list.map((t) => t.total_time_handle_ts ?? t.total_time_handle)),
         pending: list.filter((t) => !t.derived.resolved).length,
         angry: list.filter((t) => t.derived.moodEnd === "Angry").length,
       };

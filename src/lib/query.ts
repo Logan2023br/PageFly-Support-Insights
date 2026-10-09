@@ -39,6 +39,7 @@ export const RANGE_LABELS: Record<RangePreset, string> = {
 
 /** Facet được phép lọc (key trường hoặc trường suy ra). */
 export const FACET_KEYS = [
+  "issue_area",
   "category_issue",
   "page_issue",
   "priority",
@@ -61,11 +62,13 @@ export const FACET_KEYS = [
   "shift_lead",
   "pagefly_plan",
   "shopify_plan",
+  "type_user",
   "root_cause",
 ] as const;
 export type FacetKey = (typeof FACET_KEYS)[number];
 
 export const FACET_LABELS: Record<FacetKey, string> = {
+  issue_area: "Khu vực issue",
   category_issue: "Nhóm issue",
   page_issue: "Trang",
   priority: "Ưu tiên",
@@ -88,6 +91,7 @@ export const FACET_LABELS: Record<FacetKey, string> = {
   shift_lead: "Shift lead",
   pagefly_plan: "Plan PageFly",
   shopify_plan: "Plan Shopify",
+  type_user: "Loại khách",
   root_cause: "Nguyên nhân",
 };
 
@@ -109,6 +113,8 @@ export function facetValues(t: Ticket, key: FacetKey): string[] {
   switch (key) {
     case "handler":
       return [HANDLER_LABEL[t.derived.handler]];
+    case "issue_area":
+      return [t.derived.issueArea ?? EMPTY_VALUE];
     case "review_asked_status":
       return [REVIEW_ASKED_LABEL[t.derived.reviewAsked]];
     case "upsell":

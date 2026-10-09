@@ -4,6 +4,7 @@ import { addDays, diffDays } from "@/lib/data/parse";
 import { CATEGORY_TICKET } from "@/lib/schema/fields";
 import type { Period } from "@/lib/query";
 import { METRICS, type MetricDef, type MetricFormat } from "./defs";
+import { missingOf } from "@/lib/data/availability";
 
 // ── Định dạng ─────────────────────────────────────────────────────────
 
@@ -18,6 +19,8 @@ export function formatValue(v: number | null | undefined, format: MetricFormat):
       return formatDuration(v);
     case "money":
       return `$${nf.format(Math.round(v))}`;
+    case "score5":
+      return `${v.toFixed(1)}/5`;
     default:
       return nf.format(Math.round(v));
   }
@@ -29,6 +32,7 @@ export function formatDelta(delta: number, format: MetricFormat): string {
   if (format === "pct") return `${sign}${(abs * 100).toFixed(1).replace(".0", "")} điểm %`;
   if (format === "duration") return `${sign}${formatDuration(abs)}`;
   if (format === "money") return `${sign}$${nf.format(Math.round(abs))}`;
+  if (format === "score5") return `${sign}${abs.toFixed(1)}`;
   return `${sign}${nf.format(Math.round(abs))}`;
 }
 
@@ -134,13 +138,19 @@ export interface CompareInput {
   previous: number | null;
   /** Ticket kỳ hiện tại thuộc chỉ số, để lấy bằng chứng. */
   subset?: Ticket[];
+  /** Số ticket mỗi kỳ. Ít hơn MIN_ALERT_SAMPLE thì tỷ lệ / thời gian / điểm không báo động (dễ báo động giả). */
+  sample?: { current: number; previous: number };
 }
+
+/** Cỡ mẫu tối thiểu (số ticket mỗi kỳ) để một chỉ số tỷ lệ / thời gian / điểm được phép báo động. */
+export const MIN_ALERT_SAMPLE = 10;
 
 /**
  * Luật báo động (chỉnh ở đây):
  *  - count: xấu đi ≥20% và ≥3 case → warning; ≥50% và ≥5 case, hoặc chỉ số critical tăng ≥2 → critical.
  *  - pct: xấu đi ≥5 điểm % → warning; ≥10 điểm % → critical.
  *  - duration/money: xấu đi ≥15% → warning; ≥40% → critical.
+ *  - Tỷ lệ / thời gian / điểm chỉ báo động khi mỗi kỳ có ≥ MIN_ALERT_SAMPLE ticket.
  */
 export function judge(input: CompareInput): Comparison {
   const { current, previous, format, polarity } = input;
@@ -158,6 +168,8 @@ export function judge(input: CompareInput): Comparison {
     evidence: evidenceFor(input.subset ?? []),
   };
   if (current == null) return { ...base, note: "Chưa có dữ liệu kỳ này." };
+  // Kỳ trước không có ticket nào (vd. trước khi sheet bắt đầu ghi) → không có mốc để so, không báo động.
+  if (input.sample && input.sample.previous === 0) return { ...base, note: "Kỳ trước chưa có ticket nào để so sánh." };
   if (previous == null) return { ...base, note: "Kỳ trước chưa có dữ liệu để so sánh." };
 
   const delta = current - previous;
@@ -176,11 +188,16 @@ export function judge(input: CompareInput): Comparison {
     } else if (format === "pct") {
       if (abs >= 0.1) alert = "critical";
       else if (abs >= 0.05) alert = "warning";
+    } else if (format === "score5") {
+      if (abs >= 0.6) alert = "critical";
+      else if (abs >= 0.3) alert = "warning";
     } else {
       if (absPct >= 0.4) alert = "critical";
       else if (absPct >= 0.15) alert = "warning";
     }
   }
+  const small = format !== "count" && input.sample != null && Math.min(input.sample.current, input.sample.previous) < MIN_ALERT_SAMPLE;
+  if (small) alert = null;
 
   const verb = delta === 0 ? "Không đổi" : delta > 0 ? "Tăng" : "Giảm";
   const pctText = pct == null || !Number.isFinite(pct) ? "" : ` (${delta >= 0 ? "+" : "−"}${Math.round(Math.abs(pct) * 100)}%)`;
@@ -193,9 +210,11 @@ export function judge(input: CompareInput): Comparison {
       ? " Đáng báo động."
       : alert === "warning"
         ? " Cần theo dõi."
-        : tone === "good"
-          ? " Chiều hướng tốt."
-          : "";
+        : small && worse
+          ? ` Ít dữ liệu (${Math.min(input.sample!.current, input.sample!.previous)} ticket) nên chưa báo động.`
+          : tone === "good"
+            ? " Chiều hướng tốt."
+            : "";
   const ev = alert && base.evidence.length ? ` ${base.evidence.join("; ")}.` : "";
   return { ...base, delta, pct, tone, alert, note: `${head}${verdict}${ev}` };
 }
@@ -216,8 +235,12 @@ export function evidenceFor(ts: Ticket[]): string[] {
 }
 
 export function compareMetrics(cur: Ticket[], prev: Ticket[], defs: MetricDef[] = METRICS): Comparison[] {
-  return defs.map((d) =>
-    judge({
+  return defs.map((d) => {
+    const miss = missingOf(d.requires);
+    if (miss.length) {
+      return { ...judge({ key: d.key, label: d.label, format: d.format, polarity: d.polarity, current: null, previous: null }), note: `Sheet chưa có cột ${miss.join(", ")}.` };
+    }
+    return judge({
       key: d.key,
       label: d.label,
       format: d.format,
@@ -226,8 +249,9 @@ export function compareMetrics(cur: Ticket[], prev: Ticket[], defs: MetricDef[] 
       current: d.compute(cur),
       previous: d.compute(prev),
       subset: d.match ? cur.filter(d.match) : undefined,
-    }),
-  );
+      sample: { current: cur.length, previous: prev.length },
+    });
+  });
 }
 
 /** So sánh theo từng giá trị của một chiều (vd. nhóm issue): "Flymate 12 vs 10". */

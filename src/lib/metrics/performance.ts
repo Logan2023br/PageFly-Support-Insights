@@ -23,13 +23,19 @@ const avg = (vals: (number | null | undefined)[]) => {
   const v = vals.filter((x): x is number => x != null && Number.isFinite(x));
   return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null;
 };
+/** Trung vị: dùng cho thời gian vì vài ticket kéo dài nhiều ngày làm trung bình lệch. */
+const median = (vals: (number | null | undefined)[]) => {
+  const v = vals.filter((x): x is number => x != null && Number.isFinite(x)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
 const rate = (ts: Ticket[], num: (t: Ticket) => boolean, base: (t: Ticket) => boolean) => {
   const b = ts.filter(base);
   return b.length ? b.filter(num).length / b.length : null;
 };
 
-const CSAT_POINTS: Record<string, number> = { Tốt: 100, Khá: 70, "Trung bình": 40, Tệ: 0 };
-const MOOD_POINTS: Record<string, number> = { Happy: 100, Neutral: 75, Worried: 40, Frustrated: 20, Angry: 0 };
+const MOOD_POINTS: Record<string, number> = { Excited: 100, Happy: 100, Neutral: 75, Worried: 40, Frustrated: 20, Angry: 0 };
 
 /** Tên các TS tham gia ticket (ghép name_pic với role_pic theo thứ tự; một ticket có thể có nhiều TS). */
 export function tsNames(t: Ticket): string[] {
@@ -71,9 +77,9 @@ const COMPONENTS: Record<PerfRole, ScoreComponent[]> = {
       key: "first_reply",
       label: "Tốc độ phản hồi đầu",
       weight: 25,
-      rule: "≤ 2 phút = 100 điểm, ≥ 15 phút = 0",
+      rule: "Trung vị phản hồi đầu: ≤ 2 phút = 100 điểm, ≥ 15 phút = 0",
       rawFormat: "duration",
-      raw: (ts) => avg(ts.map((t) => t.derived.firstReplySec)),
+      raw: (ts) => median(ts.map((t) => t.derived.firstReplySec)),
       score: (v) => linear(v, 120, 900),
     },
     {
@@ -89,16 +95,16 @@ const COMPONENTS: Record<PerfRole, ScoreComponent[]> = {
       key: "csat",
       label: "CSAT",
       weight: 20,
-      rule: "Tốt 100 · Khá 70 · Trung bình 40 · Tệ 0",
-      rawFormat: "count",
-      raw: (ts) => avg(ts.map((t) => (t.csat ? CSAT_POINTS[t.csat] : null))),
-      score: (v) => v,
+      rule: "CSAT trung bình thang 1–5: 5 = 100 điểm, 1 = 0",
+      rawFormat: "score5",
+      raw: (ts) => avg(ts.map((t) => t.derived.csatScore)),
+      score: (v) => ((v - 1) / 4) * 100,
     },
     {
       key: "mood_end",
       label: "Mood khách lúc kết thúc",
       weight: 15,
-      rule: "Happy 100 · Neutral 75 · Worried 40 · Frustrated 20 · Angry 0",
+      rule: "Excited/Happy 100 · Neutral 75 · Frustrated 20 · Angry 0",
       rawFormat: "count",
       raw: (ts) => avg(ts.map((t) => (t.derived.moodEnd ? MOOD_POINTS[t.derived.moodEnd] : null))),
       score: (v) => v,
@@ -127,9 +133,9 @@ const COMPONENTS: Record<PerfRole, ScoreComponent[]> = {
       key: "join_wait",
       label: "Khách chờ TS join",
       weight: 25,
-      rule: "≤ 10 phút = 100 điểm, ≥ 60 phút = 0",
+      rule: "Trung vị thời gian khách chờ TS join: ≤ 10 phút = 100 điểm, ≥ 60 phút = 0",
       rawFormat: "duration",
-      raw: (ts) => avg(ts.map((t) => t.derived.supportWaitSec)),
+      raw: (ts) => median(ts.map((t) => t.derived.supportWaitSec)),
       score: (v) => linear(v, 600, 3600),
     },
     {
@@ -145,25 +151,25 @@ const COMPONENTS: Record<PerfRole, ScoreComponent[]> = {
       key: "handle_time",
       label: "Thời gian handle",
       weight: 20,
-      rule: "≤ 30 phút = 100 điểm, ≥ 4 giờ = 0",
+      rule: "Trung vị thời gian handle của TS (total_time_handle_ts): ≤ 30 phút = 100 điểm, ≥ 4 giờ = 0",
       rawFormat: "duration",
-      raw: (ts) => avg(ts.map((t) => t.total_time_handle)),
+      raw: (ts) => median(ts.map((t) => t.total_time_handle_ts ?? t.total_time_handle)),
       score: (v) => linear(v, 1800, 14400),
     },
     {
       key: "csat",
       label: "CSAT",
       weight: 15,
-      rule: "Tốt 100 · Khá 70 · Trung bình 40 · Tệ 0",
-      rawFormat: "count",
-      raw: (ts) => avg(ts.map((t) => (t.csat ? CSAT_POINTS[t.csat] : null))),
-      score: (v) => v,
+      rule: "CSAT trung bình thang 1–5: 5 = 100 điểm, 1 = 0",
+      rawFormat: "score5",
+      raw: (ts) => avg(ts.map((t) => t.derived.csatScore)),
+      score: (v) => ((v - 1) / 4) * 100,
     },
     {
       key: "mood_end",
       label: "Mood khách lúc kết thúc",
       weight: 15,
-      rule: "Happy 100 · Neutral 75 · Worried 40 · Frustrated 20 · Angry 0",
+      rule: "Excited/Happy 100 · Neutral 75 · Frustrated 20 · Angry 0",
       rawFormat: "count",
       raw: (ts) => avg(ts.map((t) => (t.derived.moodEnd ? MOOD_POINTS[t.derived.moodEnd] : null))),
       score: (v) => v,
@@ -208,9 +214,12 @@ export const PERF_METRICS: PerfMetric[] = [
   { key: "score", label: "Điểm chất lượng", format: "score", polarity: "up-good", compute: (ts, role) => qualityScore(ts, role).score },
   { key: "tickets", label: "Số ticket", format: "count", polarity: "neutral", compute: (ts) => ts.length },
   { key: "resolved_rate", label: "Tỷ lệ resolved", format: "pct", polarity: "up-good", compute: (ts) => rate(ts, (t) => t.derived.resolved, (t) => t.resolution != null) },
-  { key: "first_reply", label: "Phản hồi đầu (TB)", format: "duration", polarity: "down-good", compute: (ts) => avg(ts.map((t) => t.derived.firstReplySec)) },
-  { key: "join_wait", label: "Khách chờ TS join (TB)", format: "duration", polarity: "down-good", compute: (ts) => avg(ts.map((t) => t.derived.supportWaitSec)) },
-  { key: "handle_time", label: "Thời gian handle (TB)", format: "duration", polarity: "down-good", compute: (ts) => avg(ts.map((t) => t.total_time_handle)) },
+  { key: "first_reply", label: "Phản hồi đầu (trung vị)", format: "duration", polarity: "down-good", compute: (ts) => median(ts.map((t) => t.derived.firstReplySec)) },
+  { key: "join_wait", label: "Khách chờ TS join (trung vị)", format: "duration", polarity: "down-good", compute: (ts) => median(ts.map((t) => t.derived.supportWaitSec)) },
+  { key: "handle_time", label: "Thời gian handle (trung vị)", format: "duration", polarity: "down-good", compute: (ts) => median(ts.map((t) => t.total_time_handle)) },
+  { key: "handle_fl", label: "Handle FL (trung vị)", format: "duration", polarity: "down-good", compute: (ts) => median(ts.map((t) => t.total_time_handle_fl)) },
+  { key: "handle_ts", label: "Handle TS (trung vị)", format: "duration", polarity: "down-good", compute: (ts) => median(ts.map((t) => t.total_time_handle_ts)) },
+  { key: "csat_avg", label: "CSAT TB (1–5)", format: "score5", polarity: "up-good", compute: (ts) => avg(ts.map((t) => t.derived.csatScore)) },
   { key: "csat_good", label: "CSAT tốt", format: "pct", polarity: "up-good", compute: (ts) => rate(ts, (t) => t.csat === "Tốt", (t) => t.csat != null) },
   { key: "self_rate", label: "Tự xử lý issue", format: "pct", polarity: "up-good", compute: (ts) => rate(ts, (t) => t.derived.handler === "FL", (t) => t.category_ticket === "Issue") },
   { key: "angry_rate", label: "Tỷ lệ khách Angry", format: "pct", polarity: "down-good", compute: (ts) => rate(ts, (t) => t.derived.moodEnd === "Angry", (t) => t.derived.moodEnd != null) },
@@ -222,11 +231,12 @@ export const PERF_METRICS: PerfMetric[] = [
     polarity: "up-good",
     compute: (ts) => rate(ts, (t) => t.derived.reviewAsked === "asked", (t) => t.derived.reviewAsked === "asked" || t.derived.reviewAsked === "forgot"),
   },
+  { key: "review_missed", label: "Đủ ĐK review chưa hỏi", format: "count", polarity: "down-good", compute: (ts) => ts.filter((t) => t.derived.reviewMissed).length },
 ];
 
 export const ROLE_METRICS: Record<PerfRole, string[]> = {
-  fl: ["score", "tickets", "first_reply", "resolved_rate", "csat_good", "self_rate", "review_asked_rate", "angry_rate", "worsened_rate"],
-  ts: ["score", "tickets", "join_wait", "handle_time", "resolved_rate", "csat_good", "angry_rate", "worsened_rate"],
+  fl: ["score", "tickets", "first_reply", "handle_fl", "resolved_rate", "csat_avg", "self_rate", "review_asked_rate", "review_missed", "angry_rate", "worsened_rate"],
+  ts: ["score", "tickets", "join_wait", "handle_ts", "resolved_rate", "csat_avg", "angry_rate", "worsened_rate"],
 };
 
 export function perfMetric(key: string): PerfMetric {

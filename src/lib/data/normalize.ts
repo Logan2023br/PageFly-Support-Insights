@@ -1,9 +1,10 @@
-import { FIELDS, FIELD_BY_KEY, MOODS, type FieldDef, type Mood, type Role } from "@/lib/schema/fields";
+import { FIELDS, FIELD_BY_KEY, MOODS, issueArea, type FieldDef, type Mood, type Role } from "@/lib/schema/fields";
 import { parseBool, parseDuration, parseList, parseNumber, parseVnDateTime, vnDayKey } from "./parse";
 import type { DataIssue, Handler, ReviewAskedStatus, Ticket } from "./types";
 import { buildNameMap, type NameMerge } from "./names";
+import { actionReasons } from "./attention";
 
-const MOOD_RANK: Record<Mood, number> = { Happy: 4, Neutral: 3, Worried: 2, Frustrated: 1, Angry: 0 };
+const MOOD_RANK: Record<Mood, number> = { Excited: 5, Happy: 4, Neutral: 3, Worried: 2, Frustrated: 1, Angry: 0 };
 
 export interface HeaderMap {
   /** chỉ số cột -> key trong hợp đồng */
@@ -40,6 +41,8 @@ export function mapHeaders(header: string[]): HeaderMap {
       seen.add(key);
     } else if (!key) unknown.push(h.trim());
   });
+  // mood_label_cx suy ra được từ mood đầu→cuối nên không tính là thiếu.
+  if (seen.has("mood_label_cx_end_to_end")) seen.add("mood_label_cx");
   const missing = FIELDS.filter((f) => !seen.has(f.key)).map((f) => f.key);
   return { columns, legacyTsColumn, unknown, missing };
 }
@@ -61,9 +64,11 @@ function toMood(raw: string | null | undefined): Mood | null {
   return known && (MOODS as readonly string[]).includes(value) ? (value as Mood) : null;
 }
 
-function reviewAskedStatus(raw: string | null): ReviewAskedStatus {
+function reviewAskedStatus(raw: string | null, happy: boolean): ReviewAskedStatus {
   if (!raw) return "unknown";
   const v = raw.toLowerCase();
+  // "Chưa hỏi": khách vui vẻ mà chưa hỏi = quên hỏi; khách không vui thì không phù hợp để hỏi.
+  if (v.startsWith("chưa hỏi")) return happy ? "forgot" : "not_suitable";
   if (v.includes("quên")) return "forgot";
   if (v.includes("có review") || v.includes("đã review") || v.includes("review rồi") || v.includes("từ trước")) return "already";
   if (v.includes("đã hỏi") || v.includes("đã mời") || v === "yes") return "asked";
@@ -160,6 +165,14 @@ export function normalizeRows(header: string[], rows: string[][]): {
       storeName = storeName ?? s.name;
     }
 
+    const numField = (key: string): number | null => {
+      const v = get(key);
+      if (!v) return null;
+      const n = parseNumber(v);
+      if (n == null) issue(key, v, "warning", "Phải là số");
+      return n;
+    };
+
     const priceRaw = get("pagefly_price");
     const price = priceRaw ? parseNumber(priceRaw) : null;
     if (priceRaw && price == null) issue("pagefly_price", priceRaw, "warning", "Giá plan phải là số");
@@ -199,7 +212,14 @@ export function normalizeRows(header: string[], rows: string[][]): {
       pagefly_price: price,
       shopify_plan: get("shopify_plan"),
       timezone: get("timezone"),
+      country: get("country"),
+      type_user: enumField("type_user"),
       tenure: get("tenure"),
+      max_slot: /^(unlimited|không giới hạn|∞)$/i.test(get("max_slot") ?? "") ? Infinity : numField("max_slot"),
+      total_pages: numField("total_pages"),
+      num_pages_publish: numField("num_pages_publish"),
+      num_section_publish: numField("num_section_publish"),
+      discount_code: get("discount_code"),
       time_install: dateField("time_install"),
       time_uninstall: dateField("time_uninstall"),
       app_review: get("app_review"),
@@ -220,7 +240,9 @@ export function normalizeRows(header: string[], rows: string[][]): {
       time_pic_reply: dateField("time_pic_reply"),
       time_pic_support_join: dateField("time_pic_support_join"),
       time_pic_solution: dateField("time_pic_solution"),
-      total_time_handle: durationField("total_time_handle"),
+      total_time_handle_fl: durationField("total_time_handle_fl"),
+      total_time_handle_ts: durationField("total_time_handle_ts"),
+      total_time_handle: null,
       total_time_ticket: durationField("total_time_ticket"),
       time_pic_max_reply: durationField("time_pic_max_reply"),
       root_cause: get("root_cause"),
@@ -254,16 +276,23 @@ export function normalizeRows(header: string[], rows: string[][]): {
     }
 
     // ── Trường suy ra ──
-    const moodPair = (t.mood_label_cx_end_to_end ?? "").split(/\s*(?:->|→|=>|>)\s*/);
+    // "Neutral->Happy" = đổi mood; một giá trị ("happy") = mood giữ nguyên suốt ticket; "no-signal" = không đo được.
+    const moodRaw = t.mood_label_cx_end_to_end ?? "";
+    const noSignal = /^no[-\s]?signal$/i.test(moodRaw.trim());
+    const moodPair = noSignal ? [] : moodRaw.split(/\s*(?:->|→|=>|>)\s*/);
     const moodStart = toMood(moodPair[0]) ?? null;
-    const moodEnd = toMood(moodPair[1]) ?? toMood(t.mood_label_cx);
-    if (t.mood_label_cx_end_to_end && (!moodStart || !moodPair[1])) {
-      issue("mood_label_cx_end_to_end", t.mood_label_cx_end_to_end, "warning", 'Định dạng "Mood->Mood", ví dụ Neutral->Happy');
+    const moodEnd = (moodPair.length > 1 ? toMood(moodPair[1]) : moodStart) ?? toMood(t.mood_label_cx);
+    if (moodRaw && !noSignal && (!moodStart || (moodPair.length > 1 && !toMood(moodPair[1])))) {
+      issue("mood_label_cx_end_to_end", moodRaw, "warning", 'Định dạng "Mood->Mood" hoặc một mood, ví dụ Neutral->Happy');
     }
+    // Sheet chỉ có cột đầu→cuối: mood hiện tại = mood cuối.
+    if (!t.mood_label_cx && moodEnd) t.mood_label_cx = moodEnd;
 
     const hasDev = roles.includes("Dev") || t.resolution === "Đợi dev check" || t.resolution === "Ticket cần dev note" || t.team_owner === "Dev";
     const hasTs = roles.includes("TS") || t.escalated === true;
     const handler: Handler = hasDev ? "Dev" : hasTs ? "TS" : "FL";
+
+    t.total_time_handle = handler !== "FL" ? (t.total_time_handle_ts ?? t.total_time_handle_fl) : (t.total_time_handle_fl ?? t.total_time_handle_ts);
 
     const firstReplySec =
       t.time_cx_contact && t.time_pic_reply && t.time_pic_reply >= t.time_cx_contact
@@ -279,7 +308,9 @@ export function normalizeRows(header: string[], rows: string[][]): {
     const appStars = stars(t.app_review);
 
     t.derived = {
-      dayKey: t.recap_at_vn != null ? vnDayKey(t.recap_at_vn) : null,
+      // Ticket thuộc ngày khách contact (vd. contact 22h hôm trước, recap 1h sáng nay → tính hôm trước).
+      at: t.time_cx_contact ?? t.recap_at_vn,
+      dayKey: (t.time_cx_contact ?? t.recap_at_vn) != null ? vnDayKey((t.time_cx_contact ?? t.recap_at_vn)!) : null,
       handler,
       roles,
       firstReplySec,
@@ -289,12 +320,19 @@ export function normalizeRows(header: string[], rows: string[][]): {
       moodEnd,
       moodWorsened,
       moodImproved,
+      issueArea: issueArea(t.category_issue),
+      reviewMissed: false,
       upsell: isUpsell(t.upsell_signal),
-      reviewAsked: reviewAskedStatus(t.review_asked),
+      reviewAsked: reviewAskedStatus(t.review_asked, moodEnd === "Happy" || moodEnd === "Excited"),
       appReviewStars: appStars,
       reviewAfterSupport: /sau khi support|after support/i.test(t.app_review ?? ""),
       crispStars: stars(t.crisp_review),
       recapCount: 1,
+      csatScore: (() => {
+        const rawCsat = raw.csat?.trim() ?? "";
+        if (/^[1-5](\.\d+)?$/.test(rawCsat)) return Number(rawCsat);
+        return t.csat ? ({ "Tốt": 5, "Khá": 4, "Trung bình": 3, "Tệ": 1.5 } as Record<string, number>)[t.csat] ?? null : null;
+      })(),
       attention:
         t.priority === "Urgent" ||
         t.churn_risk === true ||
@@ -303,6 +341,10 @@ export function normalizeRows(header: string[], rows: string[][]): {
         t.feedback_cx_solution === "Tệ" ||
         t.csat === "Tệ",
     };
+
+    t.derived.reviewMissed = t.review_verdict === "QUALIFIED" && t.derived.reviewAsked !== "asked" && t.derived.reviewAsked !== "already";
+    // Urgent cũng tính là cần chú ý (sheet có cột priority).
+    t.derived.attention = t.priority === "Urgent" || actionReasons(t).length > 0;
 
     allNames.push(...[t.triggered_by, t.shift_lead, ...t.name_pic].filter((x): x is string => !!x));
     const prev = byId.get(id);

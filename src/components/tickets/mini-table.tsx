@@ -4,7 +4,7 @@ import { formatVnDateTime } from "@/lib/data/parse";
 import { Badge, Empty, type BadgeTone } from "@/components/ui";
 
 export const PRIORITY_TONE: Record<string, BadgeTone> = { Urgent: "danger", High: "warn", Normal: "neutral" };
-export const MOOD_TONE: Record<string, BadgeTone> = { Happy: "success", Neutral: "neutral", Worried: "warn", Frustrated: "warn", Angry: "danger" };
+export const MOOD_TONE: Record<string, BadgeTone> = { Excited: "success", Happy: "success", Neutral: "neutral", Worried: "warn", Frustrated: "warn", Angry: "danger" };
 export const CAT_TONE: Record<string, BadgeTone> = { Feedback: "neutral", Issue: "violet", Improve: "success" };
 
 export function resolutionTone(r: string | null): BadgeTone {
@@ -22,7 +22,7 @@ export function MiniTable({ tickets, hrefFor, limit = 25 }: { tickets: Ticket[];
       <table className="w-full min-w-[860px] border-collapse text-left">
         <thead>
           <tr className="border-b border-pf-border text-[11px] uppercase tracking-[0.06em] text-pf-faint">
-            {["Thời gian", "Store", "Loại", "Tóm tắt", "FL / PIC", "Ưu tiên", "Kết quả", "Mood"].map((h) => (
+            {["Khách contact", "Store", "Loại", "Tóm tắt", "FL / PIC", "Ưu tiên", "Kết quả", "Mood"].map((h) => (
               <th key={h} className="whitespace-nowrap px-3 py-2.5 font-semibold">
                 {h}
               </th>
@@ -32,7 +32,7 @@ export function MiniTable({ tickets, hrefFor, limit = 25 }: { tickets: Ticket[];
         <tbody>
           {tickets.slice(0, limit).map((t) => (
             <tr key={t.id} className="border-b border-pf-border/60 text-[12.5px] last:border-0 hover:bg-pf-card/60">
-              <td className="tabular whitespace-nowrap px-3 py-2.5 align-top text-pf-muted">{formatVnDateTime(t.recap_at_vn)}</td>
+              <td className="tabular whitespace-nowrap px-3 py-2.5 align-top text-pf-muted">{formatVnDateTime(t.derived.at)}</td>
               <td className="px-3 py-2.5 align-top">
                 <div className="grid gap-0.5">
                   <span className="font-semibold text-white">{t.store_name ?? t.store_domain ?? "—"}</span>

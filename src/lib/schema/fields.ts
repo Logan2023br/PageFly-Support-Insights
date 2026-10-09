@@ -44,19 +44,21 @@ export const GROUP_LABELS: Record<FieldGroup, string> = {
 };
 
 export const CATEGORY_TICKET = ["Feedback", "Issue", "Improve"] as const;
-export const CATEGORY_ISSUE = [
-  "Flymate",
-  "Style",
-  "Editor",
-  "A/B Testing",
-  "Bug",
-  "Free service",
-  "ATC",
-  "Font",
-  "Section",
-  "Theme",
-  "3rd App",
-] as const;
+/** Nhóm issue chi tiết (cột category_issue), xếp theo khu vực lớn ở ISSUE_AREAS. */
+export const ISSUE_AREAS = {
+  "Editor & thiết kế": ["Editor", "Style", "Section", "Font", "Media", "Animation", "Sticky", "Popup", "Form", "Mobile/Responsive", "Flymate"],
+  "Publish & trang": ["Publish", "Page management", "Page size", "Performance", "SEO/Accessibility", "Markets/Localization"],
+  "Theme & tích hợp": ["Theme", "3rd App", "ATC", "Cart", "Product data", "Analytics/Tracking", "A/B Testing"],
+  "Thanh toán & gói": ["Billing", "Plan", "Credit", "Refund", "Affiliate"],
+  "Lỗi sản phẩm": ["Bug"],
+  "Tư vấn & tài khoản": ["Consultation/How-to", "Login/Account", "Free service"],
+  "Khác": ["Unclear/Internal", "Other"],
+} as const;
+export type IssueArea = keyof typeof ISSUE_AREAS;
+export const CATEGORY_ISSUE = Object.values(ISSUE_AREAS).flat() as unknown as readonly (typeof ISSUE_AREAS)[IssueArea][number][];
+const AREA_OF = new Map<string, IssueArea>(Object.entries(ISSUE_AREAS).flatMap(([area, list]) => list.map((c) => [c, area as IssueArea] as const)));
+/** Khu vực lớn của một category_issue; giá trị ngoài danh sách rơi vào "Khác". */
+export const issueArea = (category: string | null | undefined): IssueArea | null => (category ? (AREA_OF.get(category) ?? "Khác") : null);
 export const PAGE_ISSUE = [
   "Multi",
   "Regular Page",
@@ -66,6 +68,7 @@ export const PAGE_ISSUE = [
   "Blog Page",
   "Contact Page",
   "Password Page",
+  "Unidentified",
 ] as const;
 export const ROLE_PIC = ["FL", "TS", "Dev"] as const;
 export const RESOLUTION = [
@@ -75,15 +78,17 @@ export const RESOLUTION = [
   "Đợi dev check",
   "Ticket cần dev note",
   "Cần buy time",
-  "Đợi khách phản hồi",
+  "Chờ khách phản hồi",
 ] as const;
 export const FEEDBACK_CX_SOLUTION = ["Good", "Tệ", "Chưa fix cần kiểm tra lại", "Chưa phản hồi"] as const;
 export const CSAT = ["Tốt", "Khá", "Trung bình", "Tệ"] as const;
-export const MOODS = ["Happy", "Neutral", "Worried", "Frustrated", "Angry"] as const;
-export const REVIEW_VERDICT = ["RIPE", "NOT_YET", "DO_NOT_ASK"] as const;
+/** Thứ tự từ tốt nhất đến tệ nhất. Worried giữ lại cho dữ liệu cũ. */
+export const MOODS = ["Excited", "Happy", "Neutral", "Worried", "Frustrated", "Angry"] as const;
+export const REVIEW_VERDICT = ["QUALIFIED", "RIPE", "NOT_YET", "DO_NOT_ASK"] as const;
 export const PRIORITY = ["Urgent", "High", "Normal"] as const;
 export const TEAM_OWNER = ["CS", "Dev", "Billing/Refund", "Marketing", "Partner", "Free service"] as const;
 export const TYPE_ISSUE = ["dev_note", "normal"] as const;
+export const TYPE_USER = ["Khách vãng lai", "Khách đã sử dụng"] as const;
 
 export type CategoryTicket = (typeof CATEGORY_TICKET)[number];
 export type Mood = (typeof MOODS)[number];
@@ -93,6 +98,8 @@ const MOOD_ALIASES: Record<string, string> = {
   natural: "Neutral",
   neutral: "Neutral",
   happy: "Happy",
+  excited: "Excited",
+  "hào hứng": "Excited",
   worried: "Worried",
   frustrated: "Frustrated",
   angry: "Angry",
@@ -166,6 +173,16 @@ export const FIELDS: readonly FieldDef[] = [
     description: "Múi giờ hoạt động chính của khách (IANA).",
     example: "Asia/Ho_Chi_Minh",
   },
+  { key: "country", label: "Quốc gia", group: "customer", kind: "text", description: "Quốc gia của store.", example: "United States" },
+  {
+    key: "type_user",
+    label: "Loại khách",
+    group: "customer",
+    kind: "enum",
+    values: TYPE_USER,
+    description: "Khách vãng lai (chưa dùng app) hay khách đã sử dụng PageFly.",
+    example: "Khách đã sử dụng",
+  },
   { key: "tenure", label: "Thời gian dùng app", group: "customer", kind: "text", description: "Đã dùng app bao lâu.", example: "5 năm" },
   { key: "time_install", label: "Ngày cài app", group: "customer", kind: "date", description: "Ngày cài đặt app.", example: "2019-09-24" },
   {
@@ -176,6 +193,11 @@ export const FIELDS: readonly FieldDef[] = [
     description: "Ngày gỡ app, để trống nếu chưa gỡ.",
     example: "2026-09-30",
   },
+  { key: "max_slot", label: "Số slot tối đa", group: "customer", kind: "number", description: "Số slot (trang) tối đa của plan. Ghi \"unlimited\" nếu không giới hạn.", example: "5" },
+  { key: "total_pages", label: "Tổng số trang", group: "customer", kind: "number", description: "Tổng số trang PageFly của store.", example: "12" },
+  { key: "num_pages_publish", label: "Trang đã publish", group: "customer", kind: "number", description: "Số trang đang publish.", example: "4" },
+  { key: "num_section_publish", label: "Section đã publish", group: "customer", kind: "number", description: "Số section đang publish.", example: "3" },
+  { key: "discount_code", label: "Mã giảm giá", group: "customer", kind: "text", description: "Mã giảm giá đã cấp cho khách (nếu có).", example: "263PHE20" },
   {
     key: "app_review",
     label: "Review App Store",
@@ -268,8 +290,22 @@ export const FIELDS: readonly FieldDef[] = [
       "theme-conflict": "Theme",
       "3rd app": "3rd App",
       "third-party-app": "3rd App",
+      responsive: "Mobile/Responsive",
+      mobile: "Mobile/Responsive",
+      "add to cart": "ATC",
+      tracking: "Analytics/Tracking",
+      analytics: "Analytics/Tracking",
+      seo: "SEO/Accessibility",
+      localization: "Markets/Localization",
+      markets: "Markets/Localization",
+      "how-to": "Consultation/How-to",
+      consultation: "Consultation/How-to",
+      login: "Login/Account",
+      account: "Login/Account",
+      unclear: "Unclear/Internal",
+      internal: "Unclear/Internal",
     },
-    description: "Phân loại danh mục issue.",
+    description: "Phân loại danh mục issue. Web tự gom vào 7 khu vực lớn (Editor & thiết kế, Publish & trang, Theme & tích hợp, Thanh toán & gói, Lỗi sản phẩm, Tư vấn & tài khoản, Khác).",
     example: "Flymate",
   },
   {
@@ -391,12 +427,21 @@ export const FIELDS: readonly FieldDef[] = [
     example: "13:05 13/04/2026",
   },
   {
-    key: "total_time_handle",
-    label: "Thời gian handle",
+    key: "total_time_handle_fl",
+    label: "Thời gian handle FL",
     group: "handling",
     kind: "duration",
-    description: "FL: từ lúc khách hỏi đến khi khách đồng ý solution. TS: từ note TS start đến note TS solution. Định dạng ngày-giờ-phút-giây.",
+    headerAliases: ["total_time_handle"],
+    description: "FL: từ lúc khách hỏi đến khi khách đồng ý solution. Định dạng ngày-giờ-phút-giây.",
     example: "0-00-42-10",
+  },
+  {
+    key: "total_time_handle_ts",
+    label: "Thời gian handle TS",
+    group: "handling",
+    kind: "duration",
+    description: "TS: từ note TS start đến note TS solution. Để trống nếu không có TS. Định dạng ngày-giờ-phút-giây.",
+    example: "0-00-22-27",
   },
   {
     key: "total_time_ticket",
@@ -433,10 +478,12 @@ export const FIELDS: readonly FieldDef[] = [
       answered: "Đã resolved",
       workaround: "Đã resolved",
       unresolved: "Hết ca vẫn chưa giải quyết",
+      "hết ca chưa giải quyết": "Hết ca vẫn chưa giải quyết",
       escalated: "Đợi TS check",
       "handed-over": "Đợi TS check",
       pending: "Cần buy time",
-      "waiting-customer": "Đợi khách phản hồi",
+      "waiting-customer": "Chờ khách phản hồi",
+      "đợi khách phản hồi": "Chờ khách phản hồi",
     },
     description: "Vấn đề đã được giải quyết hay chưa.",
     example: "Đã resolved",
@@ -447,7 +494,7 @@ export const FIELDS: readonly FieldDef[] = [
     group: "handling",
     kind: "enum",
     values: FEEDBACK_CX_SOLUTION,
-    valueAliases: { good: "Good", tốt: "Good", bad: "Tệ", tệ: "Tệ" },
+    valueAliases: { good: "Good", tốt: "Good", bad: "Tệ", tệ: "Tệ", "not-fixed": "Chưa fix cần kiểm tra lại", "no-feedback": "Chưa phản hồi" },
     description: "Khách phản hồi ngay về solution.",
     example: "Good",
   },
@@ -457,8 +504,8 @@ export const FIELDS: readonly FieldDef[] = [
     group: "handling",
     kind: "enum",
     values: REVIEW_VERDICT,
-    valueAliases: { ripe: "RIPE", not_yet: "NOT_YET", "not yet": "NOT_YET", do_not_ask: "DO_NOT_ASK" },
-    description: "RIPE = nên mời review ngay · NOT_YET = chưa đến lúc · DO_NOT_ASK = không nên mời. (Chờ Eli xác nhận định nghĩa.)",
+    valueAliases: { qualified: "QUALIFIED", ripe: "RIPE", not_yet: "NOT_YET", "not yet": "NOT_YET", do_not_ask: "DO_NOT_ASK" },
+    description: "QUALIFIED / RIPE = đủ điều kiện mời review · NOT_YET = chưa đến lúc · DO_NOT_ASK = không nên mời.",
     example: "RIPE",
   },
   {
@@ -476,8 +523,8 @@ export const FIELDS: readonly FieldDef[] = [
     group: "handling",
     kind: "enum",
     values: CSAT,
-    valueAliases: { good: "Tốt", tốt: "Tốt", khá: "Khá", "trung bình": "Trung bình", bad: "Tệ", tệ: "Tệ" },
-    description: "Mức hài lòng của khách với cách xử lý (Haiku tự đo).",
+    valueAliases: { good: "Tốt", tốt: "Tốt", khá: "Khá", "trung bình": "Trung bình", bad: "Tệ", tệ: "Tệ", "5": "Tốt", "4": "Khá", "3": "Trung bình", "2": "Tệ", "1": "Tệ" },
+    description: "Mức hài lòng của khách với cách xử lý (Haiku tự đo). Nhận cả thang 1–5: 5 = Tốt, 4 = Khá, 3 = Trung bình, 1–2 = Tệ.",
     example: "Tốt",
   },
   {
@@ -496,7 +543,8 @@ export const FIELDS: readonly FieldDef[] = [
     label: "Mood đầu → cuối",
     group: "handling",
     kind: "text",
-    description: "Mood lúc mới contact -> sau khi xử lý, ngăn bằng \"->\".",
+    headerAliases: ["mood_label_end_to_end", "mood_end_to_end"],
+    description: "Mood lúc mới contact -> sau khi xử lý, ngăn bằng \"->\" hoặc \"→\". Ghi một giá trị (vd \"happy\") nghĩa là mood không đổi suốt ticket; \"no-signal\" = không đủ tín hiệu.",
     example: "Neutral->Happy",
   },
   {

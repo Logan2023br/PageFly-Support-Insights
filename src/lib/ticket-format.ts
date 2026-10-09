@@ -18,6 +18,8 @@ export function cellText(t: Ticket, key: string): string {
       return v ? "Yes" : "No";
     case "multi":
       return (v as string[]).join(", ");
+    case "number":
+      return v === Infinity ? "unlimited" : String(v);
     default:
       return String(v);
   }

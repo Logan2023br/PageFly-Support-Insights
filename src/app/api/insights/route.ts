@@ -1,3 +1,4 @@
+import { apiGuard } from "@/lib/auth/api";
 import { NextResponse } from "next/server";
 import { earliestDay, getDataset } from "@/lib/data";
 import { vnDayKey } from "@/lib/data/parse";
@@ -15,6 +16,8 @@ const KINDS: InsightKind[] = ["overview", "compare", "report-cs", "report-dev", 
 const GRAINS: ReportGrain[] = ["week", "month", "quarter", "all"];
 
 export async function POST(request: Request) {
+  const denied = await apiGuard();
+  if (denied) return denied;
   let body: Body;
   try {
     body = (await request.json()) as Body;

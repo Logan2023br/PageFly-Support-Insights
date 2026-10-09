@@ -7,7 +7,9 @@ export interface NameMerge {
   reason: "manual" | "auto" | "case";
 }
 
-const key = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+/** Bỏ hậu tố vai trò mà sheet đôi khi ghi kèm tên: "Logan (TS)" → "Logan". */
+const clean = (s: string) => s.trim().replace(/\s*\((?:ts|fl|dev)\)\s*$/i, "").replace(/\s+/g, " ");
+const key = (s: string) => clean(s).toLowerCase();
 
 /**
  * Dựng bảng tên chuẩn: mỗi người một tên hiển thị.
@@ -17,7 +19,7 @@ const key = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
 export function buildNameMap(occurrences: string[]): { canonical: (name: string) => string; merges: NameMerge[] } {
   const counts = new Map<string, Map<string, number>>(); // key -> spelling -> count
   for (const raw of occurrences) {
-    const n = raw.trim().replace(/\s+/g, " ");
+    const n = clean(raw);
     if (!n) continue;
     const k = key(n);
     if (!counts.has(k)) counts.set(k, new Map());

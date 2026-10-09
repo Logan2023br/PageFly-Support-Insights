@@ -1,9 +1,11 @@
 import "server-only";
 import { connection } from "next/server";
+import { requireUser } from "@/lib/auth/current";
 import { generateMockSheet } from "./mock";
 import { normalizeRows } from "./normalize";
 import { readSheet } from "./sheet";
 import type { Dataset } from "./types";
+import { setMissingFields } from "./availability";
 
 const TTL_MS = Number(process.env.DATA_CACHE_SECONDS ?? 30) * 1000;
 
@@ -23,6 +25,14 @@ function resolveSource(): "mock" | "sheet" {
   return process.env.SHEET_ID ? "sheet" : "mock";
 }
 
+/** Link mở sheet nguồn; SHEET_GID (tuỳ chọn) để mở thẳng đúng tab. */
+function sheetUrl(): string | null {
+  const id = process.env.SHEET_ID;
+  if (!id) return null;
+  const gid = process.env.SHEET_GID;
+  return `https://docs.google.com/spreadsheets/d/${id}/edit${gid ? `#gid=${gid}` : ""}`;
+}
+
 async function load(): Promise<Dataset> {
   const now = Date.now();
   if (resolveSource() === "mock") {
@@ -32,7 +42,10 @@ async function load(): Promise<Dataset> {
       tickets,
       issues,
       source: "mock",
-      sourceLabel: "Dữ liệu giả lập (đúng hợp đồng 49 cột)",
+      sourceLabel: "Dữ liệu giả lập (đúng hợp đồng cột)",
+      sourceUrl: null,
+      sourceTab: null,
+      headerCount: header.length,
       loadedAt: now,
       unknownHeaders: headerMap.unknown,
       missingHeaders: headerMap.missing,
@@ -42,7 +55,7 @@ async function load(): Promise<Dataset> {
     };
   }
 
-  const tab = process.env.SHEET_TAB ?? "Recap Log";
+  const tab = process.env.SHEET_TAB ?? "Recap v11";
   const raw = await readSheet({
     sheetId: process.env.SHEET_ID!,
     tab,
@@ -55,6 +68,9 @@ async function load(): Promise<Dataset> {
     issues,
     source: raw.mode,
     sourceLabel: `Google Sheet · ${tab}`,
+    sourceUrl: sheetUrl(),
+    sourceTab: tab,
+    headerCount: raw.header.filter((h) => h?.trim()).length,
     loadedAt: now,
     unknownHeaders: headerMap.unknown,
     missingHeaders: headerMap.missing,
@@ -64,16 +80,27 @@ async function load(): Promise<Dataset> {
   };
 }
 
-/** Dataset đã chuẩn hoá, cache TTL (mặc định 5 phút). Lỗi tải sheet -> giữ bản cũ và gắn `error`. */
+/** Dataset cho trang web / API nội bộ: bắt buộc đăng nhập bằng cookie (tài khoản còn tồn tại). */
 export async function getDataset(opts: { force?: boolean } = {}): Promise<Dataset> {
   // Dữ liệu thay đổi theo thời gian: luôn đọc lúc request, không đưa vào static shell.
   await connection();
+  // Chặn tại nguồn: chỉ tài khoản còn tồn tại mới đọc được dữ liệu (kể cả qua API).
+  await requireUser();
+  return loadDataset(opts);
+}
+
+/**
+ * Dataset KHÔNG kiểm tra cookie — chỉ gọi sau khi đã xác thực bằng cách khác (vd. token OAuth ở /api/mcp).
+ * Cache TTL (mặc định 30 giây). Lỗi tải sheet -> giữ bản cũ và gắn `error`.
+ */
+export async function loadDataset(opts: { force?: boolean } = {}): Promise<Dataset> {
   const fresh = cache.dataset && Date.now() - cache.dataset.loadedAt < TTL_MS && !cache.dataset.error;
   if (fresh && !opts.force) return cache.dataset!;
   if (cache.inflight) return cache.inflight;
 
   cache.inflight = load()
     .then((ds) => {
+      setMissingFields(ds.missingHeaders);
       cache.dataset = ds;
       return ds;
     })
@@ -86,6 +113,9 @@ export async function getDataset(opts: { force?: boolean } = {}): Promise<Datase
             issues: [],
             source: "sheet-public",
             sourceLabel: "Google Sheet",
+            sourceUrl: sheetUrl(),
+            sourceTab: process.env.SHEET_TAB ?? "Recap v11",
+            headerCount: 0,
             loadedAt: Date.now(),
             unknownHeaders: [],
             missingHeaders: [],

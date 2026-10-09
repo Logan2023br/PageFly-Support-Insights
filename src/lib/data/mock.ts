@@ -1,4 +1,4 @@
-// Dữ liệu giả lập đúng hợp đồng 49 cột, dùng khi sheet chưa cấu hình hoặc chưa có cột mới.
+// Dữ liệu giả lập đúng hợp đồng cột, dùng khi sheet chưa cấu hình hoặc chưa có cột mới.
 // Sinh ra dạng chuỗi giống hệt sheet để đi qua cùng đường chuẩn hoá với dữ liệu thật.
 import { FIELDS } from "@/lib/schema/fields";
 import { VN_OFFSET_MS, vnDayKey } from "./parse";
@@ -164,7 +164,7 @@ export function generateMockSheet(days = 120, now = Date.now()): { header: strin
         ? weighted<string>(r, [["Đợi dev check", 5], ["Ticket cần dev note", 3], ["Đã resolved", 2]])
         : escalate
           ? weighted<string>(r, [["Đã resolved", 6], ["Đợi TS check", 3], ["Hết ca vẫn chưa giải quyết", 1]])
-          : weighted<string>(r, [["Đã resolved", 8], ["Đợi khách phản hồi", 2], ["Hết ca vẫn chưa giải quyết", 1], ["Cần buy time", 0.4]]);
+          : weighted<string>(r, [["Đã resolved", 8], ["Chờ khách phản hồi", 2], ["Hết ca vẫn chưa giải quyết", 1], ["Cần buy time", 0.4]]);
       const resolved = resolution === "Đã resolved";
 
       const moodStartW: [string, number][] = [["Neutral", 6], ["Worried", 3], ["Frustrated", 1.6], ["Happy", 1.4], ["Angry", 0.5]];
@@ -222,6 +222,13 @@ export function generateMockSheet(days = 120, now = Date.now()): { header: strin
         pagefly_price: String(price),
         shopify_plan: store.shopify,
         timezone: store.tz,
+        type_user: pick(r, ["Khách đã sử dụng", "Khách đã sử dụng", "Khách đã sử dụng", "Khách vãng lai"]),
+        country: pick(r, ["United States", "United Kingdom", "Australia", "Canada", "Germany", "Brazil", "Vietnam"]),
+        max_slot: String(store.plan[1] === 0 ? 1 : Math.max(3, Math.round(store.plan[1] / 5))),
+        total_pages: String(1 + Math.floor(r() * 30)),
+        num_pages_publish: String(Math.floor(r() * 12)),
+        num_section_publish: String(Math.floor(r() * 6)),
+        discount_code: upsell.startsWith("Có") && r() < 0.4 ? "263PHE20" : "",
         tenure: store.tenure,
         time_install: fmtDt(store.install).slice(0, 10),
         time_uninstall: uninstalled,
@@ -243,7 +250,8 @@ export function generateMockSheet(days = 120, now = Date.now()): { header: strin
         time_pic_reply: fmtCx(contact + firstReply * 1000),
         time_pic_support_join: escalate ? fmtCx(join) : "",
         time_pic_solution: resolved || r() < 0.5 ? fmtCx(solution) : "",
-        total_time_handle: fmtDur(handleSec),
+        total_time_handle_fl: fmtDur(escalate ? firstReply + 300 : handleSec),
+        total_time_handle_ts: escalate ? fmtDur(handleSec) : "",
         total_time_ticket: fmtDur(ticketSec),
         time_pic_max_reply: fmtDur(maxReply),
         root_cause: refund ? "do khách không dùng được app" : spec ? pick(r, spec.roots) : cat === "Feedback" ? "góp ý sản phẩm" : "nhu cầu tính năng",

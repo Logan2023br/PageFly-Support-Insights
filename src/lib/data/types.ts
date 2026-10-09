@@ -19,7 +19,15 @@ export interface Ticket {
   pagefly_price: number | null;
   shopify_plan: string | null;
   timezone: string | null;
+  country: string | null;
+  type_user: string | null;
   tenure: string | null;
+  /** Infinity = không giới hạn ("unlimited"). */
+  max_slot: number | null;
+  total_pages: number | null;
+  num_pages_publish: number | null;
+  num_section_publish: number | null;
+  discount_code: string | null;
   time_install: number | null;
   time_uninstall: number | null;
   app_review: string | null;
@@ -42,6 +50,9 @@ export interface Ticket {
   time_pic_reply: number | null;
   time_pic_support_join: number | null;
   time_pic_solution: number | null;
+  total_time_handle_fl: number | null;
+  total_time_handle_ts: number | null;
+  /** Suy ra: thời gian handle của bậc xử lý cao nhất (TS nếu có, ngược lại FL). */
   total_time_handle: number | null;
   total_time_ticket: number | null;
   time_pic_max_reply: number | null;
@@ -62,6 +73,9 @@ export interface Ticket {
   review_asked: string | null;
 
   derived: {
+    /** Mốc thời gian của ticket: lúc khách contact (time_cx_contact), thiếu thì lấy lúc recap. */
+    at: number | null;
+    /** Ngày (giờ VN) của `at` — dùng để lọc theo khoảng thời gian. */
     dayKey: string | null;
     /** Bậc xử lý cao nhất: FL tự xử lý / TS / Dev. */
     handler: Handler;
@@ -73,12 +87,18 @@ export interface Ticket {
     moodEnd: Mood | null;
     moodWorsened: boolean;
     moodImproved: boolean;
+    /** Khu vực lớn của category_issue (ISSUE_AREAS). */
+    issueArea: string | null;
+    /** review_verdict = QUALIFIED nhưng FL chưa hỏi và khách chưa có review. */
+    reviewMissed: boolean;
     upsell: boolean;
     reviewAsked: ReviewAskedStatus;
     appReviewStars: number | null;
     reviewAfterSupport: boolean;
     crispStars: number | null;
     attention: boolean;
+    /** CSAT thang 1–5: lấy số gốc nếu sheet ghi số, ngược lại quy đổi từ chữ (Tốt 5 · Khá 4 · Trung bình 3 · Tệ 1.5). */
+    csatScore: number | null;
     /** Số lần ticket được recap (các dòng trùng session đã gộp). */
     recapCount: number;
   };
@@ -100,6 +120,12 @@ export interface Dataset {
   issues: DataIssue[];
   source: "mock" | "sheet-public" | "sheet-service-account";
   sourceLabel: string;
+  /** Link mở sheet nguồn (null khi dùng dữ liệu giả lập). */
+  sourceUrl: string | null;
+  /** Tên tab đang đọc. */
+  sourceTab: string | null;
+  /** Số cột có trong hàng tiêu đề của sheet. */
+  headerCount: number;
   loadedAt: number;
   /** Cột có trong sheet nhưng không thuộc hợp đồng. */
   unknownHeaders: string[];

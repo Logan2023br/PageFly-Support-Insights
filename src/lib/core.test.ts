@@ -201,3 +201,115 @@ describe("gộp tên nhân sự", () => {
     expect(tickets[0].role_pic).toEqual(["FL", "TS", "TS"]);
   });
 });
+
+import { setMissingFields } from "@/lib/data/availability";
+import { METRIC_BY_KEY } from "@/lib/metrics/defs";
+
+describe("Recap v11", () => {
+  const header = ["recap_at_vn", "csat", "role_pic", "total_time_handle_fl", "total_time_handle_ts", "review_asked", "mood_label_cx", "resolution", "feedback_cx_solution", "pagefly_price", "num_pages_publish"];
+  const { tickets } = normalizeRows(header, [
+    ["2026-10-08 22:31", "2", "FL, TS", "0-00-13-36", "0-00-02-22", "Chưa hỏi", "happy", "Chờ khách phản hồi", "not-fixed", "24$", "4"],
+    ["2026-10-08 22:54", "5", "FL", "0-00-36-24", "", "Chưa hỏi", "frustrated", "Đã resolved", "no-feedback", "0$", ""],
+  ]);
+  it("CSAT 1–5 giữ điểm gốc và quy đổi nhãn", () => {
+    expect(tickets.map((t) => t.derived.csatScore).sort()).toEqual([2, 5]);
+    expect(tickets.find((t) => t.derived.csatScore === 5)!.csat).toBe("Tốt");
+  });
+  it("thời gian handle lấy của TS khi có TS", () => {
+    const ts = tickets.find((t) => t.derived.handler === "TS")!;
+    expect(ts.total_time_handle).toBe(142);
+    expect(tickets.find((t) => t.derived.handler === "FL")!.total_time_handle).toBe(36 * 60 + 24);
+  });
+  it("giá trị mới được quy đổi", () => {
+    const a = tickets.find((t) => t.derived.handler === "TS")!;
+    expect(a.resolution).toBe("Chờ khách phản hồi");
+    expect(a.feedback_cx_solution).toBe("Chưa fix cần kiểm tra lại");
+    expect(a.derived.reviewAsked).toBe("forgot"); // Chưa hỏi + khách vui
+    expect(tickets.find((t) => t.derived.handler === "FL")!.derived.reviewAsked).toBe("not_suitable");
+    expect(a.pagefly_price).toBe(24);
+    expect(a.num_pages_publish).toBe(4);
+  });
+  it("chỉ số phụ thuộc cột thiếu trả null thay vì 0", () => {
+    setMissingFields(["priority", "team_owner"]);
+    expect(METRIC_BY_KEY.urgent.compute(tickets)).toBeNull();
+    expect(METRIC_BY_KEY.marketing.compute(tickets)).toBeNull();
+    expect(METRIC_BY_KEY.refund.compute(tickets)).toBe(0); // tính theo category_issue = Refund, không cần team_owner
+    expect(METRIC_BY_KEY.csat_avg.compute(tickets)).toBe(3.5);
+    setMissingFields([]);
+    expect(METRIC_BY_KEY.urgent.compute(tickets)).toBe(0);
+  });
+  it("cột mood_label_end_to_end: một giá trị, cặp mũi tên, no-signal; slot unlimited; loại khách", () => {
+    const header = ["recap_at_vn", "mood_label_end_to_end", "max_slot", "type_user", "session_id"];
+    const res = normalizeRows(header, [
+      ["2026-10-09 10:00", "happy", "unlimited", "Khách vãng lai", "s1"],
+      ["2026-10-09 10:05", "frustrated → neutral", "5", "", "s2"],
+      ["2026-10-09 10:10", "no-signal", "", "", "s3"],
+    ]);
+    expect(res.headerMap.missing).not.toContain("mood_label_cx");
+    const [a, b, c] = res.tickets.sort((x, y) => x.session_id!.localeCompare(y.session_id!));
+    expect([a.derived.moodStart, a.derived.moodEnd, a.mood_label_cx]).toEqual(["Happy", "Happy", "Happy"]);
+    expect(a.max_slot).toBe(Infinity);
+    expect(a.type_user).toBe("Khách vãng lai");
+    expect(b.derived.moodImproved).toBe(true);
+    expect(b.mood_label_cx).toBe("Neutral");
+    expect(normalizeRows(["recap_at_vn", "resolution"], [["2026-10-09 10:00", "Hết ca chưa giải quyết"]]).tickets[0].resolution).toBe("Hết ca vẫn chưa giải quyết");
+    expect(c.derived.moodEnd).toBeNull();
+    expect(res.issues.filter((i) => i.field === "mood_label_cx_end_to_end" || i.field === "max_slot")).toEqual([]);
+  });
+  it("mood Excited, khu vực issue, review bỏ lỡ, cần chú ý", () => {
+    const header = ["recap_at_vn", "mood_label_end_to_end", "category_ticket", "category_issue", "review_verdict", "review_asked", "resolution", "churn_risk", "session_id"];
+    const { tickets } = normalizeRows(header, [
+      ["2026-10-09 10:00", "excited", "Issue", "Cart", "QUALIFIED", "Chưa hỏi", "Đã resolved", "no", "a"],
+      ["2026-10-09 10:05", "neutral", "Issue", "Refund", "QUALIFIED", "FL đã hỏi", "Hết ca chưa giải quyết", "yes", "b"],
+      ["2026-10-09 10:10", "happy", "Issue", "Lạ hoắc", "NOT_YET", "Chưa hỏi", "Chờ khách phản hồi", "no", "c"],
+    ]);
+    const [a, b, c] = tickets.sort((x, y) => x.session_id!.localeCompare(y.session_id!));
+    expect(a.derived.moodEnd).toBe("Excited");
+    expect(a.derived.issueArea).toBe("Theme & tích hợp");
+    expect(a.derived.reviewAsked).toBe("forgot"); // Excited tính như khách vui
+    expect(a.derived.reviewMissed).toBe(true);
+    expect(a.derived.attention).toBe(false);
+    expect(b.derived.reviewMissed).toBe(false);
+    expect(b.derived.issueArea).toBe("Thanh toán & gói");
+    expect(b.derived.attention).toBe(true); // churn + hết ca chưa xong
+    expect(c.derived.issueArea).toBe("Khác");
+    expect(METRIC_BY_KEY.refund.compute(tickets)).toBe(1);
+    expect(METRIC_BY_KEY.waiting_customer.compute(tickets)).toBe(1);
+    expect(METRIC_BY_KEY.review_missed.compute(tickets)).toBe(1);
+  });
+  it("tỷ lệ không báo động khi ít mẫu", () => {
+    const small = judge({ key: "x", label: "x", format: "pct", polarity: "up-good", current: 0.2, previous: 0.6, sample: { current: 4, previous: 30 } });
+    expect(small.alert).toBeNull();
+    expect(small.note).toMatch(/Ít dữ liệu/);
+    const big = judge({ key: "x", label: "x", format: "pct", polarity: "up-good", current: 0.2, previous: 0.6, sample: { current: 40, previous: 30 } });
+    expect(big.alert).toBe("critical");
+  });
+  it("tên có hậu tố vai trò được gộp về một người", () => {
+    const { canonical } = buildNameMap(["Logan Truong", "Logan", "Logan (TS)", "Alfie (TS)"]);
+    expect(canonical("Logan (TS)")).toBe("Logan Truong");
+    expect(canonical("Alfie (TS)")).toBe("Alfie");
+  });
+  it("ticket thuộc ngày khách contact, không phải ngày recap", () => {
+    const { tickets } = normalizeRows(["recap_at_vn", "time_cx_contact", "session_id"], [["2026-10-09 01:00", "22:00 08/10/2026", "s"]]);
+    expect(tickets[0].derived.dayKey).toBe("2026-10-08");
+  });
+});
+
+import { dueGrains, lastClosed, previousOf } from "@/lib/archive/periods";
+describe("Kho báo cáo", () => {
+  it("kỳ đã đóng gần nhất", () => {
+    expect(lastClosed("week", "2026-10-12")).toMatchObject({ from: "2026-10-05", to: "2026-10-11" }); // thứ 2
+    expect(lastClosed("month", "2026-11-01")).toMatchObject({ from: "2026-10-01", to: "2026-10-31", label: "Tháng 10/2026" });
+    expect(lastClosed("month", "2027-01-01")).toMatchObject({ from: "2026-12-01", to: "2026-12-31" });
+    expect(lastClosed("quarter", "2026-10-01")).toMatchObject({ from: "2026-07-01", to: "2026-09-30", label: "Quý 3/2026" });
+    expect(lastClosed("year", "2027-01-01")).toMatchObject({ from: "2026-01-01", to: "2026-12-31", label: "Năm 2026" });
+    expect(previousOf(lastClosed("week", "2026-10-12"))).toMatchObject({ from: "2026-09-28", to: "2026-10-04" });
+    expect(previousOf(lastClosed("month", "2026-03-01"))).toMatchObject({ from: "2026-01-01", to: "2026-01-31" });
+  });
+  it("lịch tạo báo cáo", () => {
+    expect(dueGrains("2026-10-12")).toEqual(["week"]); // thứ 2
+    expect(dueGrains("2026-10-13")).toEqual([]);
+    expect(dueGrains("2026-10-01")).toEqual(["month", "quarter"]);
+    expect(dueGrains("2029-01-01")).toEqual(["week", "month", "quarter", "year"]); // 1/1/2029 là thứ 2
+  });
+});

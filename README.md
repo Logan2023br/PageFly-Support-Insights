@@ -43,6 +43,23 @@ Bên ghi dữ liệu cần làm theo **[docs/sheet-contract.md](docs/sheet-contr
 
 Mọi bộ lọc nằm trên URL, nên gửi link là người nhận thấy đúng màn hình đó.
 
+## Đăng nhập & tài khoản
+
+- Mọi trang và API đều cần đăng nhập bằng **username + mật khẩu**. Người chưa đăng nhập bị chuyển về `/login`, API trả 401.
+- **Admin gốc** khai báo trong `.env.local`: `ADMIN_USERNAME`, `ADMIN_PASSWORD`. Tài khoản này luôn đăng nhập được, dùng để tạo các tài khoản khác.
+- Menu **Tài khoản** (chỉ admin thấy): thêm, đổi mật khẩu, đổi quyền (Admin / Thành viên), xoá tài khoản. Không xoá được chính mình. Tài khoản bị xoá sẽ bị đăng xuất ở lần tải trang tiếp theo.
+- Mật khẩu lưu dạng băm scrypt. Phiên đăng nhập là cookie httpOnly ký bằng `AUTH_SECRET`, kéo dài 7 ngày. Sai mật khẩu 5 lần thì khoá 10 phút.
+- **Nơi lưu tài khoản**:
+  - Chạy local: file `data/users.json` (không commit).
+  - Trên Vercel: **bắt buộc** thêm Upstash Redis (Vercel → Storage → Upstash Redis). Bước này tự thêm `KV_REST_API_URL` và `KV_REST_API_TOKEN`. Nếu chưa thêm thì chỉ admin gốc đăng nhập được.
+
+## Deploy lên Vercel
+
+1. `npx vercel login`, rồi `npx vercel link`.
+2. Thêm biến môi trường (Production): `AUTH_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `DATA_SOURCE=sheet`, `SHEET_ID`, `SHEET_TAB`.
+3. Vercel → Storage → tạo **Upstash Redis** và gắn vào project.
+4. `npx vercel --prod`.
+
 ## Compare & báo động
 
 Compare tự lấy **khoảng liền trước có cùng số ngày**: 7 ngày so với 7 ngày trước đó; 20–23 so với 16–19. Trong modal Compare có thể đổi kỳ so sánh.
@@ -92,5 +109,4 @@ Thêm chỉ số mới: khai báo trong `src/lib/metrics/defs.ts`, sau đó thê
 
 ## Chưa làm (theo thống nhất)
 
-- **Đăng nhập & phân quyền**: chưa có. Trường nhạy cảm (`review_pic`) đã được gắn `sensitive` để sau này ẩn theo quyền. Trong lúc chưa có đăng nhập, không đưa web ra link công khai.
-- **Deploy**: hiện chỉ chạy local. Có thể deploy lên Vercel mà không cần sửa code.
+- **Ẩn dữ liệu nhạy cảm theo quyền**: trường `review_pic` đã được gắn `sensitive`, chưa ẩn với tài khoản Thành viên.

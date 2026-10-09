@@ -1,3 +1,4 @@
+import { apiGuard } from "@/lib/auth/api";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
 import { earliestDay, getDataset } from "@/lib/data";
@@ -28,6 +29,8 @@ function fileResponse(body: ArrayBuffer | string, filename: string, type: string
 }
 
 export async function GET(request: Request) {
+  const denied = await apiGuard();
+  if (denied) return denied;
   const url = new URL(request.url);
   const sp: SearchParams = Object.fromEntries(url.searchParams.entries());
   const kind = url.searchParams.get("kind") ?? "tickets";

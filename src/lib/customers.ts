@@ -23,7 +23,14 @@ export interface Customer {
   price: number | null;
   shopifyPlan: string | null;
   timezone: string | null;
+  country: string | null;
+  typeUser: string | null;
   tenure: string | null;
+  maxSlot: number | null;
+  totalPages: number | null;
+  pagesPublished: number | null;
+  sectionsPublished: number | null;
+  discountCode: string | null;
   installAt: number | null;
   uninstallAt: number | null;
   appReview: string | null;
@@ -121,7 +128,14 @@ export function buildCustomers(all: Ticket[], inScope: Ticket[], periodFrom: str
       price: latest(history, (t) => t.pagefly_price),
       shopifyPlan: latest(history, (t) => t.shopify_plan),
       timezone: latest(history, (t) => t.timezone),
+      country: latest(history, (t) => t.country),
+      typeUser: latest(history, (t) => t.type_user),
       tenure: latest(history, (t) => t.tenure),
+      maxSlot: latest(history, (t) => t.max_slot),
+      totalPages: latest(history, (t) => t.total_pages),
+      pagesPublished: latest(history, (t) => t.num_pages_publish),
+      sectionsPublished: latest(history, (t) => t.num_section_publish),
+      discountCode: latest(history, (t) => t.discount_code),
       installAt: latest(history, (t) => t.time_install),
       uninstallAt: latest(history, (t) => t.time_uninstall),
       appReview: latest(history, (t) => t.app_review),
