@@ -143,7 +143,7 @@ export async function findByUsername(username: string): Promise<UserRecord | und
 // ── Kiểm tra dữ liệu ────────────────────────────────────────────────
 
 export function validateUsername(u: string): string | null {
-  if (!/^[a-zA-Z0-9._-]{3,32}$/.test(u)) return "Username 3–32 ký tự, chỉ gồm chữ không dấu, số, dấu chấm, gạch dưới, gạch ngang.";
+  if (!/^[a-zA-Z0-9._-]{2,32}$/.test(u)) return "Username 2–32 ký tự, chỉ gồm chữ không dấu, số, dấu chấm, gạch dưới, gạch ngang.";
   return null;
 }
 
