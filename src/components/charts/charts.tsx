@@ -217,58 +217,6 @@ export function TrendChart({
   );
 }
 
-/** Biểu đồ đường nhỏ trong ô KPI: kỳ này (tím) vs kỳ trước (đứt nét), căn theo thứ tự mốc. */
-export function KpiTrend({
-  data,
-  format,
-}: {
-  data: { label: string; prevLabel: string | null; cur: number | null; prev: number | null }[];
-  format: TrendFormat;
-}) {
-  if (data.filter((d) => d.cur != null).length < 2) return <div className="grid h-[64px] place-items-center text-[11px] text-pf-faint">Chưa đủ mốc để vẽ xu hướng</div>;
-  const domain: [number, number] | undefined = format === "pct" ? [0, 1] : format === "score5" ? [1, 5] : undefined;
-  return (
-    <div className="h-[64px]">
-      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 240, height: 64 }}>
-        <LineChart data={data} margin={{ top: 6, right: 4, left: 4, bottom: 2 }}>
-          <YAxis hide domain={domain ?? ["auto", "auto"]} />
-          <XAxis dataKey="label" hide />
-          <Tooltip
-            cursor={{ stroke: "rgba(255,255,255,0.18)" }}
-            wrapperStyle={{ zIndex: 30 }}
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              const row = payload[0].payload as (typeof data)[number];
-              return (
-                <div className="min-w-[150px] rounded-[10px] border border-pf-border bg-pf-bg-deep px-2.5 py-2 text-[11px] shadow-pf-float">
-                  <div className="flex justify-between gap-3">
-                    <span className="flex items-center gap-1.5 text-pf-muted">
-                      <span className="size-2 rounded-full bg-[#9a6bff]" />
-                      {fmtDay(row.label)}
-                    </span>
-                    <span className="tabular font-semibold text-pf-text">{fmtTrend(row.cur, format)}</span>
-                  </div>
-                  {row.prevLabel && (
-                    <div className="mt-0.5 flex justify-between gap-3">
-                      <span className="flex items-center gap-1.5 text-pf-muted">
-                        <span className="h-0 w-2.5 border-t-2 border-dashed border-[rgba(231,228,245,0.55)]" />
-                        {fmtDay(row.prevLabel)}
-                      </span>
-                      <span className="tabular text-pf-body">{fmtTrend(row.prev, format)}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            }}
-          />
-          <Line type="monotone" dataKey="prev" stroke="rgba(231,228,245,0.45)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
-          <Line type="monotone" dataKey="cur" stroke="#9a6bff" strokeWidth={2} dot={false} activeDot={{ r: 3.5, stroke: SURFACE, strokeWidth: 2 }} connectNulls isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 /** Đường xu hướng nhỏ qua các kỳ báo cáo (tuần / tháng / quý). Điểm `highlight` là kỳ đang xem. */
 export function PeriodTrend({ data, format, highlight }: { data: { label: string; v: number | null }[]; format: TrendFormat; highlight?: number }) {
   if (data.filter((d) => d.v != null).length < 2) return <div className="grid h-[56px] place-items-center text-[11px] text-pf-faint">Chưa đủ kỳ để vẽ xu hướng</div>;

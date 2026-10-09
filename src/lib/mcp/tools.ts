@@ -99,7 +99,7 @@ export function registerInsightTools(server: McpServer) {
         previousPeriod: q.prev ? periodLabel(q.prev) : null,
         category: q.cat,
         tickets: d.cur.length,
-        kpis: [...d.main, ...d.moreGroups.flatMap((g) => g.tiles)].map((t) => ({ key: t.def.key, label: t.def.label, value: t.value, distinctStores: t.stores, vsPrevious: t.change ? slimCmp(t.change) : null })),
+        kpis: [...d.main.flat(), ...d.moreGroups.flatMap((g) => g.tiles)].map((t) => ({ key: t.def.key, label: t.def.label, value: t.value, distinctStores: t.stores, vsPrevious: t.change ? slimCmp(t.change) : null })),
         summaries: d.summaries.map((s) => ({ title: s.title, lines: s.lines.map((l) => l.text) })),
         topIssueAreas: d.breakdowns.category_issue.slice(0, 10),
         topRootCauses: d.breakdowns.root_cause.slice(0, 10),

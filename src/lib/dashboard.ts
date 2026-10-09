@@ -6,17 +6,31 @@ import { customerSummary, flSummary, ticketSummary } from "@/lib/metrics/summari
 import { inPeriod, periodLabel, selectTickets, type Period, type Query } from "@/lib/query";
 import { addDays, diffDays } from "@/lib/data/parse";
 
-/** Ô KPI chính (kèm biểu đồ đường so với kỳ trước) theo từng tab. */
-export const MAIN_TILES: Record<Query["cat"], string[]> = {
-  all: ["total", "stores", "resolved_rate", "first_reply_median", "csat_avg", "fl_self_rate", "churn", "upsell"],
-  Issue: ["issue", "stores", "resolved_rate", "first_reply_median", "fl_self_rate", "dev_needed", "churn", "unresolved_shift"],
-  Feedback: ["feedback", "stores", "csat_avg", "upsell", "churn", "review_missed"],
-  Improve: ["improve", "stores", "upsell", "churn", "csat_avg", "dev_needed"],
+/** Ô KPI chính theo từng tab, mỗi mảng là một hàng (4–6 ô). */
+export const MAIN_TILES: Record<Query["cat"], string[][]> = {
+  all: [
+    ["total", "stores", "feedback", "issue", "improve"],
+    ["fl_self", "ts_handled", "dev_needed", "refund", "unresolved_shift", "waiting_customer"],
+    ["resolved_rate", "first_reply_median", "csat_avg", "angry", "churn", "upsell"],
+  ],
+  Issue: [
+    ["issue", "stores", "fl_self", "ts_handled", "dev_needed"],
+    ["refund", "dev_note", "unresolved_shift", "waiting_customer", "solution_bad", "review_missed"],
+    ["resolved_rate", "first_reply_median", "handle_fl", "handle_ts", "angry", "churn"],
+  ],
+  Feedback: [
+    ["feedback", "stores", "upsell", "churn"],
+    ["csat_avg", "angry", "review_missed", "new_reviews"],
+  ],
+  Improve: [
+    ["improve", "stores", "upsell", "churn"],
+    ["dev_needed", "csat_avg", "review_missed", "new_reviews"],
+  ],
 };
 
 /** Chỉ số khác (gom theo nhóm, mở rộng khi cần). Ẩn chỉ số trùng tab: Feedback/Issue/Improve chỉ hiện ở tab All. */
 function moreTiles(cat: Query["cat"]): string[] {
-  const main = new Set(MAIN_TILES[cat]);
+  const main = new Set(MAIN_TILES[cat].flat());
   const volume = cat === "all" ? ["feedback", "issue", "improve"] : [];
   return METRICS.filter((m) => !main.has(m.key) && (m.group !== "volume" || volume.includes(m.key))).map((m) => m.key);
 }
@@ -32,8 +46,6 @@ export interface Tile {
   missing: string[];
   /** Số store khác nhau trong các ticket của chỉ số (để phân biệt đơn vị ticket / store). */
   stores: number | null;
-  /** Giá trị theo ngày (hoặc tuần) của kỳ này và kỳ trước, căn theo thứ tự mốc. */
-  trend?: TrendPoint[];
 }
 
 export interface TrendPoint {
@@ -43,7 +55,7 @@ export interface TrendPoint {
   prev: number | null;
 }
 
-/** Cắt kỳ thành các mốc ngày (gộp tuần nếu > 45 ngày) để vẽ biểu đồ đường của từng chỉ số. */
+/** Cắt kỳ thành các mốc ngày (gộp tuần nếu > 45 ngày) để vẽ biểu đồ đường 2 kỳ khi bấm vào chỉ số. */
 function slices(p: Period): Period[] {
   const n = diffDays(p.from, p.to) + 1;
   const size = n > 45 ? 7 : 1;
@@ -76,7 +88,7 @@ export function buildDashboard(all: Ticket[], q: Query) {
   const comparisons = q.prev ? compareMetrics(cur, prev) : [];
   const cmpByKey = new Map(comparisons.map((c) => [c.key, c]));
 
-  const tile = (key: string, withTrend: boolean): Tile => {
+  const tile = (key: string): Tile => {
     const def = METRICS.find((m) => m.key === key)!;
     const raw = def.compute(cur);
     const missing = missingOf(def.requires);
@@ -90,13 +102,12 @@ export function buildDashboard(all: Ticket[], q: Query) {
       change: cmpByKey.get(key) ?? null,
       missing,
       stores: matched ? new Set(matched.map((t) => t.store_domain).filter(Boolean)).size : null,
-      trend: withTrend && !missing.length ? metricTrend(def, cur, prev, q) : undefined,
     };
   };
-  const main = MAIN_TILES[q.cat].map((k) => tile(k, true));
+  const main = MAIN_TILES[q.cat].map((row) => row.map((k) => tile(k)));
   // Chỉ số khác: bỏ ô thiếu cột (đã liệt kê ở trang Chất lượng dữ liệu), gom theo nhóm.
   const more = moreTiles(q.cat)
-    .map((k) => tile(k, false))
+    .map((k) => tile(k))
     .filter((t) => !t.missing.length);
   const moreGroups = (Object.keys(GROUP_TITLES) as MetricGroup[])
     .map((g) => ({ title: GROUP_TITLES[g], tiles: more.filter((t) => METRICS.find((m) => m.key === t.def.key)!.group === g) }))
@@ -178,7 +189,7 @@ export function overviewFacts(all: Ticket[], q: Query) {
     period: periodLabel(q.period),
     segment: q.cat,
     filters: q.facets,
-    kpis: [...d.main, ...d.moreGroups.flatMap((g) => g.tiles)].map((t) => ({ label: t.def.label, value: t.value, stores: t.stores, vsPrevious: t.change?.note ?? null })),
+    kpis: [...d.main.flat(), ...d.moreGroups.flatMap((g) => g.tiles)].map((t) => ({ label: t.def.label, value: t.value, stores: t.stores, vsPrevious: t.change?.note ?? null })),
     summaries: d.summaries.map((s) => ({ title: s.title, lines: s.lines.map((l) => l.text) })),
     topIssueAreas: d.breakdowns.category_issue.slice(0, 8),
     topRootCauses: d.breakdowns.root_cause.slice(0, 8),

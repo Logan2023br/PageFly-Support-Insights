@@ -91,7 +91,7 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
 
       <FilterBar range={q.range} from={q.period.from} to={q.period.to} cat={q.cat} periodLabel={periodLabel(q.period)} prevLabel={prevLabel} counts={counts} />
 
-      <KpiMain tiles={d.main} selected={tileKey} prevLabel={prevLabel} hrefFor={(key) => hrefWith("/", sp, { tile: key })} />
+      <KpiMain rows={d.main} selected={tileKey} prevLabel={prevLabel} hrefFor={(key) => hrefWith("/", sp, { tile: key })} />
 
       {drill && tileKey && (
         <Panel className="p-4 sm:p-5">
@@ -136,7 +136,7 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
         </Panel>
       )}
 
-      <KpiMore groups={d.moreGroups} selected={tileKey} prevLabel={prevLabel} hrefFor={(key) => hrefWith("/", sp, { tile: key })} open={Boolean(tileKey && !d.main.some((t) => t.def.key === tileKey))} />
+      <KpiMore groups={d.moreGroups} selected={tileKey} prevLabel={prevLabel} hrefFor={(key) => hrefWith("/", sp, { tile: key })} open={Boolean(tileKey && !d.main.flat().some((t) => t.def.key === tileKey))} />
 
       <ActionPanel items={actionItems(d.cur)} hrefFor={(id) => ticketsHref({ f_attention: "Yes", ticket: id })} allHref={ticketsHref({ f_attention: "Yes" })} />
 

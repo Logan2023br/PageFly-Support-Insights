@@ -3,17 +3,21 @@ import { ChevronDown, Info } from "lucide-react";
 import type { Tile } from "@/lib/dashboard";
 import { GROUP_TITLES, METRICS, type MetricGroup } from "@/lib/metrics/defs";
 import { formatDelta } from "@/lib/metrics/compute";
-import { KpiTrend } from "@/components/charts/charts";
 import { AlertBadge, cx, Delta } from "@/components/ui";
 
 type HrefFor = (key: string | null) => string;
 
-/** Ô KPI chính, mỗi ô có biểu đồ đường kỳ này vs kỳ trước. */
-export function KpiMain({ tiles, selected, hrefFor, prevLabel }: { tiles: Tile[]; selected: string | null; hrefFor: HrefFor; prevLabel: string | null }) {
+/** Ô KPI chính, xếp theo hàng (4–6 ô mỗi hàng). Bấm ô để xem tóm tắt + biểu đồ 2 kỳ bên dưới. */
+export function KpiMain({ rows, selected, hrefFor, prevLabel }: { rows: Tile[][]; selected: string | null; hrefFor: HrefFor; prevLabel: string | null }) {
+  const cols: Record<number, string> = { 4: "xl:grid-cols-4", 5: "xl:grid-cols-5", 6: "lg:grid-cols-3 xl:grid-cols-6" };
   return (
-    <div className={cx("grid gap-3 sm:grid-cols-2", tiles.length > 6 ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
-      {tiles.map((tile) => (
-        <KpiTile key={tile.def.key} tile={tile} active={selected === tile.def.key} href={tile.drillable ? hrefFor(selected === tile.def.key ? null : tile.def.key) : undefined} prevLabel={prevLabel} large />
+    <div className="grid gap-3">
+      {rows.map((row, i) => (
+        <div key={i} className={cx("grid gap-3 sm:grid-cols-2", cols[row.length] ?? "xl:grid-cols-4")}>
+          {row.map((tile) => (
+            <KpiTile key={tile.def.key} tile={tile} active={selected === tile.def.key} href={tile.drillable ? hrefFor(selected === tile.def.key ? null : tile.def.key) : undefined} prevLabel={prevLabel} large />
+          ))}
+        </div>
       ))}
     </div>
   );
@@ -74,7 +78,7 @@ function KpiTile({ tile, active, href, prevLabel, large }: { tile: Tile; active:
     <>
       <div className="flex items-center justify-between gap-2 text-[12px] font-semibold text-pf-muted">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate">{tile.def.label}</span>
+          <span className="leading-snug">{tile.def.label}</span>
           <span className="group/info relative shrink-0" aria-label={`Cách tính: ${tile.def.hint}`}>
             <Info size={13} strokeWidth={1.75} className="text-pf-faint group-hover/info:text-pf-primary-hi" />
             <span className="pointer-events-none invisible absolute left-1/2 top-5 z-40 w-[260px] -translate-x-1/2 rounded-[10px] border border-pf-border bg-pf-bg-deep px-3 py-2 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/info:visible group-hover/info:opacity-100">
@@ -85,13 +89,8 @@ function KpiTile({ tile, active, href, prevLabel, large }: { tile: Tile; active:
         </span>
         {href && <ChevronDown size={14} strokeWidth={1.75} className={cx("shrink-0 text-pf-faint transition-transform duration-200", active && "rotate-180 text-pf-primary-hi")} />}
       </div>
-      <div className={cx("tabular mt-2 font-display font-bold leading-none tracking-[-0.03em] text-white", large ? "text-[30px]" : "text-[24px]")}>{tile.value}</div>
+      <div className={cx("tabular mt-2 font-display font-bold leading-none tracking-[-0.03em] text-white", large ? "text-[28px]" : "text-[24px]")}>{tile.value}</div>
       {footer}
-      {large && tile.trend && (
-        <div className="-mx-1 mt-2">
-          <KpiTrend data={tile.trend} format={tile.def.format} />
-        </div>
-      )}
     </>
   );
   const cls = cx(

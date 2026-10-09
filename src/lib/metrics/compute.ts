@@ -138,11 +138,11 @@ export interface CompareInput {
   previous: number | null;
   /** Ticket kỳ hiện tại thuộc chỉ số, để lấy bằng chứng. */
   subset?: Ticket[];
-  /** Số ticket mỗi kỳ. Ít hơn MIN_ALERT_SAMPLE thì tỷ lệ / thời gian / điểm không báo động (dễ báo động giả). */
+  /** Số ticket mỗi kỳ. Ít hơn MIN_ALERT_SAMPLE thì không báo động (dễ báo động giả, vd. 2 → 49 ticket). */
   sample?: { current: number; previous: number };
 }
 
-/** Cỡ mẫu tối thiểu (số ticket mỗi kỳ) để một chỉ số tỷ lệ / thời gian / điểm được phép báo động. */
+/** Cỡ mẫu tối thiểu (số ticket mỗi kỳ) để một chỉ số được phép báo động. */
 export const MIN_ALERT_SAMPLE = 10;
 
 /**
@@ -150,7 +150,7 @@ export const MIN_ALERT_SAMPLE = 10;
  *  - count: xấu đi ≥20% và ≥3 case → warning; ≥50% và ≥5 case, hoặc chỉ số critical tăng ≥2 → critical.
  *  - pct: xấu đi ≥5 điểm % → warning; ≥10 điểm % → critical.
  *  - duration/money: xấu đi ≥15% → warning; ≥40% → critical.
- *  - Tỷ lệ / thời gian / điểm chỉ báo động khi mỗi kỳ có ≥ MIN_ALERT_SAMPLE ticket.
+ *  - Chỉ báo động khi mỗi kỳ có ≥ MIN_ALERT_SAMPLE ticket.
  */
 export function judge(input: CompareInput): Comparison {
   const { current, previous, format, polarity } = input;
@@ -196,7 +196,7 @@ export function judge(input: CompareInput): Comparison {
       else if (absPct >= 0.15) alert = "warning";
     }
   }
-  const small = format !== "count" && input.sample != null && Math.min(input.sample.current, input.sample.previous) < MIN_ALERT_SAMPLE;
+  const small = input.sample != null && Math.min(input.sample.current, input.sample.previous) < MIN_ALERT_SAMPLE;
   if (small) alert = null;
 
   const verb = delta === 0 ? "Không đổi" : delta > 0 ? "Tăng" : "Giảm";
