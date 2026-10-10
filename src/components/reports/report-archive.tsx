@@ -142,14 +142,20 @@ export function ReportArchive({
           </h2>
           <p className="mt-0.5 text-[12px] text-pf-muted">
             {tab === "auto"
-              ? "Hệ thống tự tạo cho cả 3 team: 05:00 sáng thứ 2 → báo cáo tuần trước (thứ 2 – hết chủ nhật) · 01:00 ngày 1 → tháng trước · đầu quý → quý trước · 1/1 → năm trước."
+              ? "Hệ thống tự tạo lúc 01:00 sáng cho cả 3 team: thứ 2 → tuần trước (00:00 thứ 2 – 23:59 chủ nhật) · ngày 1 → tháng trước · đầu quý → quý trước · 1/1 → năm trước."
               : `Báo cáo do người dùng tự chọn khoảng ngày — chỉ tạo cho ${TEAM_LABEL[team]}, các team khác không bị tạo theo.`}
           </p>
         </div>
         <div className="flex gap-1 rounded-xl border border-pf-border bg-white/[.02] p-1" role="tablist">
           {(
             [
-              ["auto", "Báo cáo tự động", "Hệ thống tự tạo theo lịch, cùng lúc cho cả 3 team (CS, Dev, Marketing):", ["Tuần: 05:00 sáng thứ 2 — số liệu thứ 2 đến hết chủ nhật tuần trước", "Tháng: 01:00 ngày 1 — tháng trước", "Quý: 01:00 ngày đầu quý — quý trước", "Năm: 01:00 ngày 1/1 — năm trước", "Luôn có phần so sánh với kỳ liền trước"]],
+              ["auto", "Báo cáo tự động", "Hệ thống tự tạo theo lịch, cùng lúc cho cả 3 team (CS, Dev, Marketing):", [
+                  ["Tuần", "01:00 sáng thứ 2", "00:00 thứ 2 – 23:59 chủ nhật tuần trước"],
+                  ["Tháng", "01:00 sáng ngày 1", "00:00 ngày 1 – 23:59 ngày cuối tháng trước"],
+                  ["Quý", "01:00 sáng ngày 1/1, 1/4, 1/7, 1/10", "00:00 ngày đầu – 23:59 ngày cuối quý trước"],
+                  ["Năm", "01:00 sáng ngày 1/1", "00:00 1/1 – 23:59 31/12 năm trước"],
+                  "Giờ Việt Nam · luôn có phần so sánh với kỳ liền trước",
+                ]],
               ["custom", "Báo cáo tự tạo", "Bạn tự chọn khoảng ngày để tạo báo cáo PDF:", ["Chỉ tạo cho team đang xem, team khác không bị tạo theo", "Tuỳ chọn so sánh với khoảng cùng số ngày ngay trước đó", "Ai cũng tạo được; người tạo hoặc admin mới xoá được", "Hữu ích khi cần báo cáo cho sự kiện, đợt release, khoảng bất kỳ"]],
             ] as const
           ).map(([t, label, intro, points]) => (
@@ -168,17 +174,28 @@ export function ReportArchive({
               <span
                 id={`tip-${t}`}
                 role="tooltip"
-                className="pointer-events-none invisible absolute bottom-full left-0 z-40 mb-2 w-[min(320px,calc(100vw-48px))] rounded-[12px] border border-pf-border bg-pf-bg-deep px-3 py-2.5 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/tab:visible group-hover/tab:opacity-100 group-has-[:focus-visible]/tab:visible group-has-[:focus-visible]/tab:opacity-100"
+                className="pointer-events-none invisible absolute bottom-full left-0 z-40 mb-2 w-[min(360px,calc(100vw-48px))] rounded-[12px] border border-pf-border bg-pf-bg-deep px-3 py-2.5 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/tab:visible group-hover/tab:opacity-100 group-has-[:focus-visible]/tab:visible group-has-[:focus-visible]/tab:opacity-100"
               >
                 <span className="mb-1 block font-semibold text-white">{label}</span>
                 {intro}
                 <span className="mt-1 grid gap-0.5">
-                  {points.map((x) => (
-                    <span key={x} className="flex gap-1.5">
-                      <span className="text-pf-primary-hi">•</span>
-                      {x}
-                    </span>
-                  ))}
+                  {points.map((x) =>
+                    typeof x === "string" ? (
+                      <span key={x} className="flex gap-1.5">
+                        <span className="text-pf-primary-hi">•</span>
+                        {x}
+                      </span>
+                    ) : (
+                      <span key={x[0]} className="flex gap-1.5">
+                        <span className="text-pf-primary-hi">•</span>
+                        <span>
+                          <span className="font-semibold text-white">{x[0]}</span>
+                          <span className="block">Tạo lúc: {x[1]}</span>
+                          <span className="block text-pf-muted">Số liệu: {x[2]}</span>
+                        </span>
+                      </span>
+                    ),
+                  )}
                 </span>
               </span>
             </span>
@@ -371,7 +388,7 @@ export function ReportArchive({
           {tabEntries.length
             ? "Không có báo cáo khớp bộ lọc."
             : tab === "auto"
-              ? "Chưa có báo cáo tự động nào. Báo cáo tuần đầu tiên sẽ được tạo lúc 05:00 sáng thứ 2 tới."
+              ? "Chưa có báo cáo tự động nào. Báo cáo tuần đầu tiên sẽ được tạo lúc 01:00 sáng thứ 2 tới."
               : 'Chưa có báo cáo tự tạo nào. Bấm "Tạo báo cáo mới" để chọn khoảng ngày.'}
         </p>
       )}
