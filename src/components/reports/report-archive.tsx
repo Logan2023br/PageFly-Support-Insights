@@ -168,7 +168,7 @@ export function ReportArchive({
               <span
                 id={`tip-${t}`}
                 role="tooltip"
-                className="pointer-events-none invisible absolute left-0 top-full z-40 mt-2 w-[min(320px,calc(100vw-48px))] rounded-[12px] border border-pf-border bg-pf-bg-deep px-3 py-2.5 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/tab:visible group-hover/tab:opacity-100 group-focus-within/tab:visible group-focus-within/tab:opacity-100"
+                className="pointer-events-none invisible absolute bottom-full left-0 z-40 mb-2 w-[min(320px,calc(100vw-48px))] rounded-[12px] border border-pf-border bg-pf-bg-deep px-3 py-2.5 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/tab:visible group-hover/tab:opacity-100 group-has-[:focus-visible]/tab:visible group-has-[:focus-visible]/tab:opacity-100"
               >
                 <span className="mb-1 block font-semibold text-white">{label}</span>
                 {intro}
