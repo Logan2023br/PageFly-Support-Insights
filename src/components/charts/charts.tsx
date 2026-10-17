@@ -85,6 +85,32 @@ export function VolumeChart({ data, keys = ["Issue", "Feedback", "Improve"] }: {
   );
 }
 
+/** Ticket Issue theo ngày: phần thuộc issue lặp lại (tím) chồng lên phần issue chỉ gặp 1 lần (xám). */
+export function RepeatDailyChart({ data }: { data: { label: string; repeat: number; single: number }[] }) {
+  const keys = [
+    { key: "repeat", label: "Ticket thuộc issue lặp lại", color: "#9a6bff" },
+    { key: "single", label: "Ticket issue chỉ gặp 1 lần", color: "rgba(231,228,245,0.22)" },
+  ];
+  return (
+    <div className="grid gap-2">
+      <Legend items={keys.map((k) => ({ label: k.label, color: k.color }))} />
+      <div className="h-[220px]">
+        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 640, height: 220 }}>
+          <BarChart data={data} margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap="22%">
+            <CartesianGrid vertical={false} stroke={GRID} />
+            <XAxis dataKey="label" tickFormatter={fmtDay} tick={{ fill: AXIS, fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={14} />
+            <YAxis allowDecimals={false} tick={{ fill: AXIS, fontSize: 11 }} axisLine={false} tickLine={false} width={44} />
+            <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={<Tip fmtLabel={(l) => l.split("→").map((x) => fmtDay(x)).join(" – ")} />} />
+            {keys.map((k, i) => (
+              <Bar key={k.key} dataKey={k.key} name={k.label} stackId="r" fill={k.color} stroke={SURFACE} strokeWidth={1} radius={i === keys.length - 1 ? [4, 4, 0, 0] : 0} isAnimationActive={false} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 /** Kỳ hiện tại vs kỳ trước, căn theo thứ tự ngày (ngày 1, ngày 2, ...). */
 export function CompareLineChart({ current, previous, currentLabel, previousLabel }: { current: { day: string; v: number }[]; previous: { day: string; v: number }[]; currentLabel: string; previousLabel: string }) {
   const data = current.map((c, i) => ({ idx: i + 1, cur: c.v, prev: previous[i]?.v ?? null, curDay: c.day, prevDay: previous[i]?.day }));

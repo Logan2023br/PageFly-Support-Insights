@@ -318,3 +318,31 @@ describe("Kho báo cáo", () => {
     expect(dueGrains("2029-01-01")).toEqual(["week", "month", "quarter", "year"]); // 1/1/2029 là thứ 2
   });
 });
+
+import { analyzeRepeats, type IssueGroups } from "@/lib/repeat/analysis";
+describe("Issue lặp lại", () => {
+  const header = ["session_id", "time_cx_contact", "category_ticket", "category_issue", "issue_summary", "store_domain", "resolution"];
+  const rows = [
+    ["a", "10:00 05/10/2026", "Issue", "Page size", "Page exceeds 256KB", "s1.myshopify.com", "Đã resolved"],
+    ["b", "10:00 06/10/2026", "Issue", "Page size", "Too large to publish", "s2.myshopify.com", "Chờ khách phản hồi"],
+    ["c", "10:00 07/10/2026", "Issue", "Page size", "256KB limit again", "s1.myshopify.com", "Đã resolved"],
+    ["d", "10:00 07/10/2026", "Issue", "ATC", "Add to cart broken", "s3.myshopify.com", "Đã resolved"],
+    ["e", "10:00 07/10/2026", "Issue", "Unclear/Internal", "Hello", "s4.myshopify.com", "Đã resolved"],
+    ["f", "10:00 07/10/2026", "Issue", "Unclear/Internal", "Hello", "s5.myshopify.com", "Đã resolved"],
+  ];
+  const { tickets } = normalizeRows(header, rows);
+  const g: IssueGroups = { groups: { g1: { id: "g1", category: "Page size", title: "Page vượt 256KB", createdAt: 0 }, g2: { id: "g2", category: "ATC", title: "ATC lỗi", createdAt: 0 } }, assign: { a: "g1", b: "g1", c: "g1", d: "g2" }, updatedAt: 0 };
+  const r = analyzeRepeats(tickets, tickets, g, { from: "2026-10-01", to: "2026-10-10" });
+  it("chỉ issue có từ 2 ticket, bỏ Unclear/Internal", () => {
+    expect(r.issueTickets).toBe(4);
+    expect(r.repeatIssues).toBe(1);
+    expect(r.repeatTickets).toBe(3);
+    expect(r.repeatCategories).toBe(1);
+    expect(r.issues[0]).toMatchObject({ title: "Page vượt 256KB", stores: 2, storesAgain: 1, unresolved: 1 });
+  });
+  it("khách gặp lại cùng issue", () => {
+    expect(r.stores).toBe(2);
+    expect(r.storesAgain).toBe(1);
+    expect(r.storeList[0]).toMatchObject({ domain: "s1.myshopify.com", tickets: 2, sameIssueAgain: true });
+  });
+});

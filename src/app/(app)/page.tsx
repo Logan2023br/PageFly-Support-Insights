@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { after } from "next/server";
 import { Download, ListFilter } from "lucide-react";
 import { earliestDay, getDataset } from "@/lib/data";
 import { buildCompare, buildDashboard, metricTrend } from "@/lib/dashboard";
@@ -17,6 +18,9 @@ import { SummaryBlocks } from "@/components/dashboard/summary-blocks";
 import { TrendChart } from "@/components/charts/charts";
 import { BarList } from "@/components/charts/bar-list";
 import { MiniTable } from "@/components/tickets/mini-table";
+import { RepeatIssues, type RepeatView } from "@/components/dashboard/repeat-issues";
+import { analyzeRepeats } from "@/lib/repeat/analysis";
+import { ensureGroups, pending, readGroups } from "@/lib/repeat/groups";
 import { AiPanel } from "@/components/ai/ai-panel";
 import { CompareView } from "@/components/compare/compare-view";
 import { ButtonLink, InlineError, InlineNote, PageHeader, PageSkeleton, Panel, PanelTitle } from "@/components/ui";
@@ -65,6 +69,14 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
   const compareOpen = sp.compare === "1" && q.prev;
   const cmp = compareOpen ? buildCompare(ds.tickets, q) : null;
   const toLine = (pts: DayPoint[]) => pts.map((p) => ({ day: p.day, v: p.total }));
+
+  // Issue lặp lại: chỉ khi đang xem Tất cả / Issue. Ticket mới chưa gom nhóm → AI gom ngầm sau khi trả trang.
+  const showRepeat = q.cat === "all" || q.cat === "Issue";
+  const groups = showRepeat ? await readGroups() : null;
+  const repeat = groups ? analyzeRepeats(ds.tickets, d.cur, groups, q.period) : null;
+  const toGroup = groups ? pending(ds.tickets, groups).length : 0;
+  if (toGroup > 0) after(() => ensureGroups(ds.tickets, { maxBatches: 3 }).catch(() => undefined));
+  const repView: RepeatView | null = sp.rep === "tickets" || sp.rep === "stores" ? sp.rep : null;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
@@ -155,6 +167,17 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
             </>
           )}
         </Panel>
+      )}
+
+      {repeat && (
+        <RepeatIssues
+          a={repeat}
+          view={repView}
+          category={typeof sp.rcat === "string" ? sp.rcat : null}
+          periodLabel={periodLabel(q.period)}
+          hrefFor={(patch) => hrefWith("/", sp, patch)}
+          grouping={toGroup}
+        />
       )}
 
       <KpiMore groups={d.moreGroups} selected={tileKey} prevLabel={prevLabel} hrefFor={(key) => hrefWith("/", sp, { tile: key })} open={Boolean(tileKey && !d.main.flat().some((t) => t.def.key === tileKey))} />
