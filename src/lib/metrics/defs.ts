@@ -1,5 +1,6 @@
 import type { Ticket } from "@/lib/data/types";
 import { missingOf } from "@/lib/data/availability";
+import { isFeedback } from "@/lib/data/category";
 
 export type Polarity = "up-good" | "down-good" | "neutral";
 export type MetricFormat = "count" | "pct" | "duration" | "money" | "score5";
@@ -63,7 +64,7 @@ const isFreeService = (t: Ticket) => t.category_issue === "Free service" || t.te
 export const METRICS: MetricDef[] = [
   // ── Khối lượng ──
   { key: "total", label: "Tổng ticket", group: "volume", format: "count", polarity: "neutral", hint: "Số ticket (Feedback + Issue + Improve) có lúc khách contact nằm trong kỳ. Một session recap nhiều lần chỉ tính 1.", match: () => true, compute: (ts) => ts.length },
-  { key: "feedback", label: "Feedback", group: "volume", format: "count", polarity: "neutral", hint: "Những góp ý của khách.", match: (t) => t.category_ticket === "Feedback", compute: count((t) => t.category_ticket === "Feedback") },
+  { key: "feedback", label: "Feedback", group: "volume", format: "count", polarity: "neutral", hint: "Những góp ý của khách: ticket loại Feedback, cộng ticket loại khác có ghi vào feedback form.", match: isFeedback, compute: count(isFeedback) },
   { key: "issue", label: "Issue", group: "volume", format: "count", polarity: "down-good", hint: "Vấn đề khách gặp phải.", match: isIssue, compute: count(isIssue) },
   { key: "improve", label: "Improve", group: "volume", format: "count", polarity: "neutral", hint: "Chức năng khách muốn có.", match: (t) => t.category_ticket === "Improve", compute: count((t) => t.category_ticket === "Improve") },
 

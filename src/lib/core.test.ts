@@ -382,3 +382,15 @@ describe("Feedback form qua nhiều lần recap", () => {
     expect(tickets[0].feedback_form).toBe("Feature request · X #F1");
   });
 });
+
+describe("feedback tab", async () => {
+  const { inCategory, feedbackText } = await import("./data/category");
+  const base = { category_ticket: "Issue", issue_summary: "Publish lỗi", feedback_form: null } as unknown as import("./data/types").Ticket;
+  it("ticket Issue có feedback form thuộc cả tab Feedback và Issue", () => {
+    const t = { ...base, feedback_form: "Feature request · Nút Pause khó tìm (Aldwin, 12/10) #F782" };
+    expect(inCategory(t, "Feedback")).toBe(true);
+    expect(inCategory(t, "Issue")).toBe(true);
+    expect(inCategory(base, "Feedback")).toBe(false);
+    expect(feedbackText(t)).toBe("Feature request · Nút Pause khó tìm");
+  });
+});

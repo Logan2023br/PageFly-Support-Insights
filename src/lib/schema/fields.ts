@@ -309,6 +309,14 @@ export const FIELDS: readonly FieldDef[] = [
     example: "Flymate",
   },
   {
+    key: "feedback_form",
+    label: "Feedback form",
+    group: "ticket",
+    kind: "longtext",
+    description: "Góp ý / yêu cầu tính năng được ghi vào form feedback từ ticket này: \"Loại · nội dung (người ghi, ngày) #mã\".",
+    example: "Feature request · Nút Pause của A/B test khó tìm (Aldwin, 12/10) #F782",
+  },
+  {
     key: "page_issue",
     label: "Trang gặp vấn đề",
     group: "ticket",
@@ -336,15 +344,6 @@ export const FIELDS: readonly FieldDef[] = [
     hiddenByDefault: true,
     description: "Từng issue trong ticket, cách nhau bởi \" | \", dạng \"Category: tóm tắt [trạng thái]\". Trạng thái: xong / mở / chờ khách / đợi dev / đợi TS.",
     example: "Publish: Page cannot be published [đợi dev] | Style: Banner resize [xong]",
-  },
-  {
-    key: "feedback_form",
-    label: "Feedback form",
-    group: "ticket",
-    kind: "longtext",
-    hiddenByDefault: true,
-    description: "Góp ý / yêu cầu tính năng được ghi vào form feedback từ ticket này: \"Loại · nội dung (người ghi, ngày) #mã\".",
-    example: "Feature request · Nút Pause của A/B test khó tìm (Aldwin, 12/10) #F782",
   },
   {
     key: "type_issue",

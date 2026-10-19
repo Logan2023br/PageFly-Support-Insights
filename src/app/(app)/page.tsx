@@ -24,6 +24,7 @@ import { ensureGroups, pending, readGroups } from "@/lib/repeat/groups";
 import { AiPanel } from "@/components/ai/ai-panel";
 import { CompareView } from "@/components/compare/compare-view";
 import { ButtonLink, InlineError, InlineNote, PageHeader, PageSkeleton, Panel, PanelTitle } from "@/components/ui";
+import { isFeedback } from "@/lib/data/category";
 
 /** "2026-10-09" → "09/10". */
 const fmtDayKey = (k: string) => `${k.slice(8, 10)}/${k.slice(5, 7)}`;
@@ -58,7 +59,8 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
   const counts = { all: 0, Feedback: 0, Issue: 0, Improve: 0 } as Record<string, number>;
   for (const t of selectTickets(ds.tickets, { ...q, cat: "all" })) {
     counts.all++;
-    if (t.category_ticket && t.category_ticket in counts) counts[t.category_ticket]++;
+    if (t.category_ticket === "Issue" || t.category_ticket === "Improve") counts[t.category_ticket]++;
+    if (isFeedback(t)) counts.Feedback++;
   }
 
   const tileKey = typeof sp.tile === "string" && METRIC_BY_KEY[sp.tile]?.match ? sp.tile : null;

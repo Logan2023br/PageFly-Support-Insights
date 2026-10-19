@@ -3,6 +3,7 @@ import { CATEGORY_TICKET, FIELD_BY_KEY } from "@/lib/schema/fields";
 import { addDays, diffDays, formatVnDate, vnDayKey } from "@/lib/data/parse";
 import type { Ticket } from "@/lib/data/types";
 import { METRIC_BY_KEY } from "@/lib/metrics/defs";
+import { inCategory } from "@/lib/data/category";
 
 export type RangePreset = "today" | "7d" | "30d" | "90d" | "all" | "custom";
 export type CatFilter = "all" | (typeof CATEGORY_TICKET)[number];
@@ -195,7 +196,7 @@ export function inPeriod(t: Ticket, p: Period): boolean {
 }
 
 export function matchesFilters(t: Ticket, q: Pick<Query, "cat" | "facets" | "q"> & { metric?: string | null }): boolean {
-  if (q.cat !== "all" && t.category_ticket !== q.cat) return false;
+  if (!inCategory(t, q.cat)) return false;
   if (q.metric && !METRIC_BY_KEY[q.metric]?.match?.(t)) return false;
   for (const [key, values] of Object.entries(q.facets)) {
     if (!values.length) continue;

@@ -5,6 +5,7 @@ import { GROUP_TITLES, METRICS, type MetricDef, type MetricGroup } from "@/lib/m
 import { customerSummary, flSummary, ticketSummary } from "@/lib/metrics/summaries";
 import { inPeriod, periodLabel, selectTickets, type Period, type Query } from "@/lib/query";
 import { addDays, diffDays } from "@/lib/data/parse";
+import { feedbackText, isFeedback } from "@/lib/data/category";
 
 /** Ô KPI chính theo từng tab, mỗi mảng là một hàng (4–5 ô). */
 export const MAIN_TILES: Record<Query["cat"], string[][]> = {
@@ -140,8 +141,8 @@ export function buildDashboard(all: Ticket[], q: Query) {
         (t) => t.issue_summary,
       ),
       feedback: countBy(
-        cur.filter((t) => t.category_ticket === "Feedback"),
-        (t) => t.issue_summary,
+        cur.filter(isFeedback),
+        feedbackText,
       ),
     },
     summaries: [ticketSummary(cur, q.period), flSummary(cur), customerSummary(cur)],

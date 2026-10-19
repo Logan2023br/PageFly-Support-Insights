@@ -24,7 +24,7 @@ const PRESETS: [string, string][] = [
   ["all", `Tất cả ${FIELDS.length} cột`],
 ];
 
-const COMPACT = ["recap_at_vn", "triggered_by", "store_domain", "category_ticket", "category_issue", "issue_summary", "priority", "role_pic", "resolution", "mood_label_cx_end_to_end", "csat", "churn_risk", "ticket_url"];
+const COMPACT = ["recap_at_vn", "triggered_by", "store_domain", "category_ticket", "category_issue", "feedback_form", "issue_summary", "priority", "role_pic", "resolution", "mood_label_cx_end_to_end", "csat", "churn_risk", "ticket_url"];
 
 function columnsFor(preset: string): string[] {
   if (preset === "all") return FIELDS.map((f) => f.key);

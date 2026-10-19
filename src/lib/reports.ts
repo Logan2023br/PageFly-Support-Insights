@@ -6,6 +6,7 @@ import { countBy, formatValue, judge, type Comparison } from "@/lib/metrics/comp
 import { metric, type MetricFormat, type Polarity } from "@/lib/metrics/defs";
 import { flStats, picStats } from "@/lib/metrics/people";
 import { inPeriod, type Period } from "@/lib/query";
+import { feedbackText, isFeedback } from "@/lib/data/category";
 
 export type ReportTeam = "cs" | "dev" | "marketing";
 export type ReportGrain = "week" | "month" | "quarter" | "all";
@@ -341,9 +342,9 @@ export function buildReport(all: Ticket[], team: ReportTeam, grain: ReportGrain,
       title: `Góp ý (Feedback) · ${focus.label}`,
       columns: ["Góp ý", "Số lần", "Cần chú ý"],
       rows: countBy(
-        focusTickets.filter((t) => t.category_ticket === "Feedback"),
-        (t) => t.issue_summary,
-      ).map((b) => [b.key, b.count, focusTickets.filter((t) => t.category_ticket === "Feedback" && t.issue_summary === b.key && t.derived.attention).length]),
+        focusTickets.filter(isFeedback),
+        feedbackText,
+      ).map((b) => [b.key, b.count, focusTickets.filter((t) => isFeedback(t) && feedbackText(t) === b.key && t.derived.attention).length]),
     });
     tables.push({
       key: "third_party",

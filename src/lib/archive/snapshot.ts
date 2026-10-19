@@ -7,6 +7,7 @@ import { people, perfMetric, type PerfRole } from "@/lib/metrics/performance";
 import { inPeriod } from "@/lib/query";
 import { devBacklog, HEADLINES, reviewFunnel, ROWS, storesWhere, TEAMS, type ReportTeam } from "@/lib/reports";
 import { previousOf, type ArchivePeriod } from "./periods";
+import { feedbackText, isFeedback } from "@/lib/data/category";
 
 export interface SnapshotMetric {
   label: string;
@@ -156,7 +157,7 @@ function marketingTables(cur: Ticket[]): SnapshotTable[] {
   const churn = storesWhere(cur, (t) => t.churn_risk === true);
   const upsell = storesWhere(cur, (t) => t.derived.upsell && !t.churn_risk);
   const f = reviewFunnel(cur);
-  const voice = (cat: "Improve" | "Feedback") => countBy(cur.filter((t) => t.category_ticket === cat), (t) => t.issue_summary).map((b) => [short(b.key, 120), String(b.count)]);
+  const voice = (cat: "Improve" | "Feedback") => countBy(cat === "Feedback" ? cur.filter(isFeedback) : cur.filter((t) => t.category_ticket === cat), cat === "Feedback" ? feedbackText : (t) => t.issue_summary).map((b) => [short(b.key, 120), String(b.count)]);
   const plan = (t: Ticket) => `${t.pagefly_plan ?? "—"}${t.pagefly_price != null ? ` · $${t.pagefly_price}` : ""}`;
   return [
     {

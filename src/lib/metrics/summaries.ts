@@ -4,6 +4,7 @@ import type { Ticket } from "@/lib/data/types";
 import { periodLabel, type Period } from "@/lib/query";
 import { countBy } from "./compute";
 import { flStats } from "./people";
+import { feedbackText, isFeedback } from "@/lib/data/category";
 
 export type LineTone = "bad" | "warn" | "good" | "neutral";
 
@@ -28,7 +29,7 @@ const list = (buckets: { key: string; count: number }[], n: number, unit = "") =
     .join(", ");
 
 export function ticketSummary(ts: Ticket[], p: Period): SummaryBlock {
-  const fb = ts.filter((t) => t.category_ticket === "Feedback");
+  const fb = ts.filter(isFeedback);
   const is = ts.filter((t) => t.category_ticket === "Issue");
   const im = ts.filter((t) => t.category_ticket === "Improve");
   const lines: SummaryLine[] = [
@@ -40,7 +41,7 @@ export function ticketSummary(ts: Ticket[], p: Period): SummaryBlock {
     text: fbAttention.length
       ? `Feedback: có ${fbAttention.length} case cần chú ý (${fbAttention
           .slice(0, 2)
-          .map((t) => `"${t.issue_summary}"`)
+          .map((t) => `"${feedbackText(t)}"`)
           .join(", ")}).`
       : `Feedback: ${fb.length} góp ý, không có case cần chú ý.`,
     tone: fbAttention.length ? "warn" : "neutral",

@@ -8,6 +8,7 @@ import { people } from "@/lib/metrics/performance";
 import { devBacklog, reviewFunnel } from "@/lib/reports";
 import { groupableItems, groupOf, itemOpen, type IssueGroups, type TicketIssue } from "@/lib/repeat/analysis";
 import type { PackFact, PackTicket } from "./types";
+import { feedbackText, isFeedback } from "@/lib/data/category";
 
 const WEEKS = 8;
 const inRange = (t: Ticket, from: string, to: string) => t.derived.dayKey != null && t.derived.dayKey >= from && t.derived.dayKey <= to;
@@ -224,10 +225,10 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
   add({ id: "review:missed_by_fl", label: "Mời review bị bỏ lỡ theo FL (tuần này)", note: "Ticket QUALIFIED nhưng FL chưa hỏi.", rows: countBy(cur.filter((t) => t.derived.reviewMissed), (t) => t.triggered_by).map((b) => ({ key: b.key, value: b.count })) });
 
   // 9) Tiếng nói khách hàng.
-  const voice = (id: string, label: string, ts: Ticket[]) =>
-    add({ id, label, note: "Tóm tắt nội dung (issue_summary) và số lần xuất hiện.", value: `${ts.length} ticket`, rows: countBy(ts, (t) => t.issue_summary).slice(0, 25).map((b) => ({ key: short(b.key, 140), value: b.count })), ticketIds: ts.slice(0, 15).map((t) => t.id) });
+  const voice = (id: string, label: string, ts: Ticket[], text: (t: Ticket) => string | null = (t) => t.issue_summary) =>
+    add({ id, label, note: "Tóm tắt nội dung (issue_summary; với feedback form là nội dung form) và số lần xuất hiện.", value: `${ts.length} ticket`, rows: countBy(ts, text).slice(0, 25).map((b) => ({ key: short(b.key, 140), value: b.count })), ticketIds: ts.slice(0, 15).map((t) => t.id) });
   voice("voice:improve", "Yêu cầu tính năng (Improve, 4 tuần)", last4.filter((t) => t.category_ticket === "Improve" || t.root_cause === "feature-request"));
-  voice("voice:feedback", "Góp ý (Feedback, 4 tuần)", last4.filter((t) => t.category_ticket === "Feedback"));
+  voice("voice:feedback", "Góp ý (Feedback, 4 tuần)", last4.filter(isFeedback), feedbackText);
   voice("voice:3rd_app", "Issue với app bên thứ 3 (4 tuần)", last4.filter((t) => t.category_issue === "3rd App" || t.root_cause === "third-party-app"));
   voice("voice:how_to", "Câu hỏi cách dùng / khách chưa biết (4 tuần)", last4.filter((t) => t.category_issue === "Consultation/How-to" || t.root_cause === "customer-knowledge"));
 
