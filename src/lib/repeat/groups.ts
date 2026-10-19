@@ -57,8 +57,7 @@ async function assignBatch(batch: Ticket[], g: IssueGroups): Promise<void> {
   const items = batch.map((t, i) => ({ ref: i, category: t.category_issue ?? "Khác", page: t.page_issue, summary: t.issue_summary }));
   const client = new Anthropic();
   const res = await client.messages.parse({
-    // Gom nhóm cần chính xác hơn nhận định → model mạnh hơn; chạy ít (chỉ ticket mới).
-    model: process.env.ANTHROPIC_GROUP_MODEL ?? "claude-sonnet-5-5",
+    model: process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5",
     max_tokens: 12000,
     system: SYSTEM,
     messages: [{ role: "user", content: `Nhóm đã có (JSON):\n${JSON.stringify(existing)}\n\nTicket cần gán (JSON):\n${JSON.stringify(items)}` }],

@@ -13,7 +13,8 @@ import { AREAS, PRIORITIES, type Insight, type InsightPack, type PackFocus, type
 // Insight Pack mỗi tuần: code tính kho bằng chứng → gửi 5 mảng phân tích qua Message Batches API (chạy bất đồng bộ,
 // không bị giới hạn thời gian hàm của Vercel) → khi xong: kiểm tra dẫn chứng → AI gộp insight trùng → lưu.
 
-const MODEL = process.env.ANTHROPIC_PACK_MODEL ?? "claude-opus-5-5";
+// Mọi tính năng AI dùng chung 1 model (mặc định Claude Haiku 4.5), đổi bằng biến ANTHROPIC_MODEL.
+const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5";
 const INDEX = "insightpack:index";
 const recKey = (id: string) => `insightpack:${id}`;
 export const FOCUSES: PackFocus[] = ["bug", "product", "support", "revenue", "overview"];
@@ -194,8 +195,9 @@ function partRequest(p: InsightPack, digest: unknown[], focus: PackFocus): Anthr
   return {
     model: MODEL,
     max_tokens: 64000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "high", format: { type: fmt.type, schema: fmt.schema } },
+    // Haiku 4.5 dùng thinking theo ngân sách token (không có adaptive / effort).
+    thinking: { type: "enabled", budget_tokens: 16000 },
+    output_config: { format: { type: fmt.type, schema: fmt.schema } },
     system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
     messages: [
       {
@@ -294,8 +296,7 @@ async function dedupe(list: Insight[]): Promise<Insight[]> {
     const res = await client.messages.parse({
       model: MODEL,
       max_tokens: 16000,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium", format: zodOutputFormat(Dedupe) },
+      output_config: { format: zodOutputFormat(Dedupe) },
       system: "Bạn rà danh sách insight do nhiều nhóm viết độc lập và tìm các insight TRÙNG Ý: cùng vấn đề VÀ cùng giải pháp chính (vd hai insight cùng đề xuất thêm cảnh báo 256KB trong editor). Chỉ gộp khi thật sự trùng; hai insight cùng chủ đề nhưng giải pháp khác (vd làm tài liệu vs sửa sản phẩm) thì KHÔNG gộp. Với mỗi nhóm trùng, giữ insight đầy đủ, cụ thể nhất.",
       messages: [{ role: "user", content: JSON.stringify(list.map((i) => ({ id: i.id, area: i.area, title: i.title, summary: i.summary, solution: i.solution.map((x) => x.step) }))) }],
     });
