@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { aiConfigured } from "@/lib/ai/insights";
+import { collectRunning, packWeek, readPack, startPack } from "@/lib/insight-pack/generate";
 import { vnDayKey } from "@/lib/data/parse";
 import { dueGrains } from "@/lib/archive/periods";
 import { generateArchive } from "@/lib/archive/store";
 import { loadDataset } from "@/lib/data";
 import { ensureGroups } from "@/lib/repeat/groups";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * Vercel Cron (xem vercel.json):
@@ -25,5 +27,15 @@ export async function GET(request: NextRequest) {
   const grouping = await ensureGroups((await loadDataset({ force: true })).tickets, { maxBatches: 2 }).catch((e) => ({ error: String(e) }));
   const results = [];
   for (const g of grains) results.push(await generateArchive(g, { auto: true }));
-  return NextResponse.json({ today, grains, results, grouping });
+  // Thu kết quả các Insight Pack đang chạy; thứ 2: tạo pack của tuần trước (chạy ngầm qua Message Batches).
+  await collectRunning().catch(() => undefined);
+  let pack: string | null = null;
+  if (grains.includes("week") && aiConfigured()) {
+    const w = packWeek("last", today);
+    const existing = await readPack(`${w.from}_${w.to}`);
+    if (!existing || existing.status === "error") {
+      pack = (await startPack({ which: "last", auto: true, createdBy: "Hệ thống" })).id;
+    }
+  }
+  return NextResponse.json({ today, grains, results, grouping, pack });
 }

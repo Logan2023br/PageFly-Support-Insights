@@ -4,12 +4,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { BarChart3, FileSpreadsheet, KeyRound, ListFilter, Plug, ShieldCheck, Store, Users, type LucideIcon } from "lucide-react";
+import { BarChart3, FileSpreadsheet, KeyRound, Lightbulb, ListFilter, Plug, ShieldCheck, Store, Users, type LucideIcon } from "lucide-react";
 import { Suspense, type ReactNode } from "react";
 import { cx } from "@/components/ui";
 
 const NAV: { href: string; label: string; icon: LucideIcon; match: (p: string) => boolean; adminOnly?: boolean }[] = [
   { href: "/", label: "Thống kê", icon: BarChart3, match: (p) => p === "/" },
+  { href: "/insights", label: "Insight Pack", icon: Lightbulb, match: (p) => p.startsWith("/insights") },
   { href: "/tickets", label: "Chi tiết", icon: ListFilter, match: (p) => p.startsWith("/tickets") },
   { href: "/customers", label: "Khách hàng", icon: Store, match: (p) => p.startsWith("/customers") },
   { href: "/team", label: "Đội ngũ", icon: Users, match: (p) => p.startsWith("/team") },
