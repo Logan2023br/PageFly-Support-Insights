@@ -1,7 +1,7 @@
 // Phân tích "issue lặp lại" — thuần, dùng được ở server và test.
 // Issue = 1 vấn đề cụ thể (nhóm do AI gom từ issue_summary). Lặp lại = cùng issue xuất hiện từ 2 ticket trở lên trong khoảng đã lọc.
 import { addDays, diffDays } from "@/lib/data/parse";
-import type { Ticket } from "@/lib/data/types";
+import type { IssueItem, Ticket } from "@/lib/data/types";
 
 export interface IssueGroup {
   id: string;
@@ -20,9 +20,15 @@ export interface IssueGroups {
 /** Category không phải vấn đề cụ thể (khách chưa nêu vấn đề / nội bộ) — không tính issue lặp lại. */
 export const EXCLUDED_CATEGORIES = ["Unclear/Internal"];
 
-/** Ticket được đưa vào phân tích issue lặp lại. */
-export function isGroupable(t: Ticket): boolean {
-  return t.category_ticket === "Issue" && Boolean(t.issue_summary) && !EXCLUDED_CATEGORIES.includes(t.category_issue ?? "");
+/** Một issue con kèm ticket chứa nó. */
+export interface TicketIssue {
+  item: IssueItem;
+  ticket: Ticket;
+}
+
+/** Các issue con của ticket được đưa vào phân tích (bỏ Unclear/Internal). Một ticket có thể có nhiều issue (cột issues_all). */
+export function groupableItems(t: Ticket): TicketIssue[] {
+  return t.derived.issues.filter((i) => i.summary && !EXCLUDED_CATEGORIES.includes(i.category ?? "")).map((item) => ({ item, ticket: t }));
 }
 
 /** Số ticket tối thiểu để một issue được tính là lặp lại. */
@@ -35,22 +41,29 @@ const norm = (s: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** Khi AI chưa gom: chỉ ticket có tóm tắt giống hệt nhau (cùng category) mới coi là cùng issue. */
-export function fallbackKey(t: Ticket): string {
-  return `auto:${t.category_issue ?? "Khác"}|${norm(t.issue_summary ?? "")}`;
+/** Khi AI chưa gom: chỉ issue có tóm tắt giống hệt nhau (cùng category) mới coi là cùng issue. */
+export function fallbackKey(item: IssueItem): string {
+  return `auto:${item.category ?? "Khác"}|${norm(item.summary)}`;
 }
 
-export function groupOf(t: Ticket, g: IssueGroups): { id: string; title: string; category: string; ai: boolean } {
-  const id = g.assign[t.id];
+export function groupOf(x: TicketIssue, g: IssueGroups): { id: string; title: string; category: string; ai: boolean } {
+  // Ticket gom theo cách cũ (1 ticket = 1 issue) vẫn dùng được kết quả gom cũ.
+  const id = g.assign[x.item.key] ?? (x.item.legacy ? g.assign[x.ticket.id] : undefined);
   const grp = id ? g.groups[id] : undefined;
-  if (grp) return { id: grp.id, title: grp.title, category: t.category_issue ?? grp.category, ai: true };
-  return { id: fallbackKey(t), title: t.issue_summary ?? "(không có tóm tắt)", category: t.category_issue ?? "Khác", ai: false };
+  if (grp) return { id: grp.id, title: grp.title, category: x.item.category ?? grp.category, ai: true };
+  return { id: fallbackKey(x.item), title: x.item.summary, category: x.item.category ?? "Khác", ai: false };
 }
+
+/** Issue con chưa xong: theo trạng thái trong issues_all, thiếu thì theo resolution của ticket. */
+export const itemOpen = (x: TicketIssue) => (x.item.status ? x.item.status.toLowerCase() !== "xong" : !x.ticket.derived.resolved);
 
 export interface RepeatIssue {
   id: string;
   title: string;
   category: string;
+  /** Các lần issue xuất hiện (mỗi lần = 1 issue con trong 1 ticket), mới nhất trước. */
+  items: TicketIssue[];
+  /** Ticket khác nhau chứa issue này. */
   tickets: Ticket[];
   stores: number;
   /** Số store gặp lại chính issue này từ 2 lần trở lên trong kỳ. */
@@ -81,9 +94,11 @@ export interface RepeatStore {
 }
 
 export interface RepeatAnalysis {
-  /** Ticket Issue trong kỳ (mẫu số). */
+  /** Ticket có ít nhất 1 issue được phân tích (mẫu số). */
   issueTickets: number;
   issueStores: number;
+  /** Tổng số issue con trong kỳ. */
+  issueItems: number;
   repeatTickets: number;
   repeatIssues: number;
   repeatCategories: number;
@@ -98,7 +113,7 @@ export interface RepeatAnalysis {
   issues: RepeatIssue[];
   storeList: RepeatStore[];
   daily: { label: string; repeat: number; single: number }[];
-  /** Số ticket Issue chưa được AI gom nhóm (đang dùng gom tạm theo tóm tắt giống hệt). */
+  /** Số issue con chưa được AI gom nhóm (đang dùng gom tạm theo tóm tắt giống hệt). */
   ungrouped: number;
 }
 
@@ -108,53 +123,58 @@ function topOf(values: (string | null)[]): string | null {
   return [...m].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 }
 
-export function analyzeRepeats(all: Ticket[], cur: Ticket[], g: IssueGroups, period: { from: string; to: string }): RepeatAnalysis {
-  const isIssue = isGroupable;
-  const issueTs = cur.filter(isIssue);
+const uniqTickets = (xs: TicketIssue[]) => [...new Map(xs.map((x) => [x.ticket.id, x.ticket])).values()];
 
-  const byGroup = new Map<string, { title: string; category: string; tickets: Ticket[] }>();
+export function analyzeRepeats(all: Ticket[], cur: Ticket[], g: IssueGroups, period: { from: string; to: string }): RepeatAnalysis {
+  const items = cur.flatMap(groupableItems);
+  const issueTs = uniqTickets(items);
+
+  const byGroup = new Map<string, { title: string; category: string; items: TicketIssue[] }>();
   let ungrouped = 0;
-  for (const t of issueTs) {
-    const grp = groupOf(t, g);
+  for (const x of items) {
+    const grp = groupOf(x, g);
     if (!grp.ai) ungrouped++;
-    const e = byGroup.get(grp.id) ?? { title: grp.title, category: grp.category, tickets: [] };
-    e.tickets.push(t);
+    const e = byGroup.get(grp.id) ?? { title: grp.title, category: grp.category, items: [] };
+    e.items.push(x);
     byGroup.set(grp.id, e);
   }
 
   // Lần đầu / gần nhất của mỗi issue trên toàn bộ dữ liệu.
   const seen = new Map<string, { first: string; last: string }>();
   for (const t of all) {
-    if (!isIssue(t) || !t.derived.dayKey) continue;
-    const id = groupOf(t, g).id;
-    if (!byGroup.has(id)) continue;
-    const s = seen.get(id);
-    if (!s) seen.set(id, { first: t.derived.dayKey, last: t.derived.dayKey });
-    else {
-      if (t.derived.dayKey < s.first) s.first = t.derived.dayKey;
-      if (t.derived.dayKey > s.last) s.last = t.derived.dayKey;
+    if (!t.derived.dayKey) continue;
+    for (const x of groupableItems(t)) {
+      const id = groupOf(x, g).id;
+      if (!byGroup.has(id)) continue;
+      const s = seen.get(id);
+      if (!s) seen.set(id, { first: t.derived.dayKey, last: t.derived.dayKey });
+      else {
+        if (t.derived.dayKey < s.first) s.first = t.derived.dayKey;
+        if (t.derived.dayKey > s.last) s.last = t.derived.dayKey;
+      }
     }
   }
 
   const issues: RepeatIssue[] = [];
   for (const [id, e] of byGroup) {
-    if (e.tickets.length < REPEAT_MIN) continue;
+    const tickets = uniqTickets(e.items).sort((a, b) => (b.derived.at ?? 0) - (a.derived.at ?? 0));
+    if (tickets.length < REPEAT_MIN) continue;
     const perStore = new Map<string, number>();
-    for (const t of e.tickets) if (t.store_domain) perStore.set(t.store_domain, (perStore.get(t.store_domain) ?? 0) + 1);
-    const tickets = [...e.tickets].sort((a, b) => (b.derived.at ?? 0) - (a.derived.at ?? 0));
+    for (const t of tickets) if (t.store_domain) perStore.set(t.store_domain, (perStore.get(t.store_domain) ?? 0) + 1);
     const s = seen.get(id);
     issues.push({
       id,
       title: e.title,
       category: e.category,
+      items: [...e.items].sort((a, b) => (b.ticket.derived.at ?? 0) - (a.ticket.derived.at ?? 0)),
       tickets,
       stores: perStore.size,
       storesAgain: [...perStore.values()].filter((n) => n >= 2).length,
       firstSeen: s?.first ?? null,
       lastSeen: tickets[0]?.derived.dayKey ?? null,
       existedBefore: Boolean(s && s.first < period.from),
-      unresolved: tickets.filter((t) => !t.derived.resolved).length,
-      devTickets: tickets.filter((t) => t.derived.handler === "Dev").length,
+      unresolved: e.items.filter(itemOpen).length,
+      devTickets: e.items.filter((x) => /dev/i.test(x.item.status ?? "") || (!x.item.status && x.ticket.derived.handler === "Dev")).length,
       churn: tickets.filter((t) => t.churn_risk === true).length,
       topRoot: topOf(tickets.map((t) => t.root_cause)),
     });
@@ -164,24 +184,27 @@ export function analyzeRepeats(all: Ticket[], cur: Ticket[], g: IssueGroups, per
   const repeatSet = new Set(issues.flatMap((i) => i.tickets.map((t) => t.id)));
   const repeatTs = issueTs.filter((t) => repeatSet.has(t.id));
 
-  const catMap = new Map<string, { issues: number; tickets: number; stores: Set<string> }>();
+  const catMap = new Map<string, { issues: number; tickets: Set<string>; stores: Set<string> }>();
   for (const i of issues) {
-    const c = catMap.get(i.category) ?? { issues: 0, tickets: 0, stores: new Set<string>() };
+    const c = catMap.get(i.category) ?? { issues: 0, tickets: new Set<string>(), stores: new Set<string>() };
     c.issues++;
-    c.tickets += i.tickets.length;
-    for (const t of i.tickets) if (t.store_domain) c.stores.add(t.store_domain);
+    for (const t of i.tickets) {
+      c.tickets.add(t.id);
+      if (t.store_domain) c.stores.add(t.store_domain);
+    }
     catMap.set(i.category, c);
   }
-  const categories = [...catMap].map(([category, c]) => ({ category, issues: c.issues, tickets: c.tickets, stores: c.stores.size })).sort((a, b) => b.tickets - a.tickets || b.issues - a.issues);
+  const categories = [...catMap].map(([category, c]) => ({ category, issues: c.issues, tickets: c.tickets.size, stores: c.stores.size })).sort((a, b) => b.tickets - a.tickets || b.issues - a.issues);
 
-  const storeMap = new Map<string, RepeatStore & { _issues: Map<string, { title: string; count: number }> }>();
+  type StoreAcc = RepeatStore & { _issues: Map<string, { title: string; count: number }>; _tickets: Set<string> };
+  const storeMap = new Map<string, StoreAcc>();
   for (const i of issues) {
     for (const t of i.tickets) {
       if (!t.store_domain) continue;
-      const s =
+      const s: StoreAcc =
         storeMap.get(t.store_domain) ??
-        ({ domain: t.store_domain, name: t.store_name, plan: t.pagefly_plan, price: t.pagefly_price, tickets: 0, issues: [], sameIssueAgain: false, churn: false, lastAt: null, lastUrl: null, _issues: new Map() } as RepeatStore & { _issues: Map<string, { title: string; count: number }> });
-      s.tickets++;
+        { domain: t.store_domain, name: t.store_name, plan: t.pagefly_plan, price: t.pagefly_price, tickets: 0, issues: [], sameIssueAgain: false, churn: false, lastAt: null, lastUrl: null, _issues: new Map(), _tickets: new Set() };
+      s._tickets.add(t.id);
       const e = s._issues.get(i.id) ?? { title: i.title, count: 0 };
       e.count++;
       s._issues.set(i.id, e);
@@ -197,9 +220,9 @@ export function analyzeRepeats(all: Ticket[], cur: Ticket[], g: IssueGroups, per
     }
   }
   const storeList: RepeatStore[] = [...storeMap.values()]
-    .map(({ _issues, ...s }) => {
+    .map(({ _issues, _tickets, ...s }) => {
       const list = [..._issues].map(([id, v]) => ({ id, ...v })).sort((a, b) => b.count - a.count);
-      return { ...s, issues: list, sameIssueAgain: list.some((x) => x.count >= 2) };
+      return { ...s, tickets: _tickets.size, issues: list, sameIssueAgain: list.some((x) => x.count >= 2) };
     })
     .sort((a, b) => Number(b.sameIssueAgain) - Number(a.sameIssueAgain) || b.tickets - a.tickets || (b.price ?? 0) - (a.price ?? 0));
 
@@ -217,6 +240,7 @@ export function analyzeRepeats(all: Ticket[], cur: Ticket[], g: IssueGroups, per
   return {
     issueTickets: issueTs.length,
     issueStores: new Set(issueTs.map((t) => t.store_domain).filter(Boolean)).size,
+    issueItems: items.length,
     repeatTickets: repeatTs.length,
     repeatIssues: issues.length,
     repeatCategories: categories.length,

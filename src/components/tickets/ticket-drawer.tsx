@@ -22,11 +22,18 @@ export function TicketDrawer({ t, closeHref, related }: { t: Ticket; closeHref: 
               {t.priority && <TicketCell t={t} field="priority" />}
               <Badge tone="violet">{HANDLER[t.derived.handler]}</Badge>
               {t.churn_risk && <Badge tone="danger">Churn risk</Badge>}
+              {t.feedback_form && <Badge tone="danger">Feedback form</Badge>}
             </div>
             <h2 className="mt-2 font-display text-[17px] font-semibold leading-snug tracking-[-0.02em] text-white">{t.issue_summary ?? "Không có tóm tắt"}</h2>
             <p className="mt-1 text-[12px] text-pf-muted">
               {t.store_name ?? t.store_domain ?? "—"} · hàng {t.row} trong sheet{t.derived.recapCount > 1 ? ` · đã recap ${t.derived.recapCount} lần` : ""}
             </p>
+            {t.feedback_form && (
+              <div className="mt-2.5">
+                <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-pf-danger">Feedback form</div>
+                <TicketCell t={t} field="feedback_form" full />
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 gap-1.5">
             {t.ticket_url && (

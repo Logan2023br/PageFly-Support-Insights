@@ -34,6 +34,26 @@ export function TicketCell({ t, field, full }: { t: Ticket; field: string; full?
       return text === "dev_note" ? <Badge tone="warn">dev_note</Badge> : <span className="text-pf-muted">{text}</span>;
     case "review_asked":
       return <span className={t.derived.reviewAsked === "forgot" ? "text-pf-warn" : "text-pf-body"}>{text}</span>;
+    case "feedback_form":
+      // Feedback form quan trọng: luôn nổi bật bằng khung đỏ.
+      return (
+        <span className={full ? "block rounded-[12px] border border-pf-danger/45 bg-pf-danger/[.12] px-3 py-2 text-[12.5px] font-semibold leading-relaxed text-pf-danger" : "line-clamp-2 block max-w-[280px] rounded-[10px] border border-pf-danger/45 bg-pf-danger/[.12] px-2 py-1 text-[11.5px] font-semibold text-pf-danger"}>
+          {text}
+        </span>
+      );
+    case "issues_all":
+      if (!full) return <span className="text-[11.5px] text-pf-muted">{t.derived.issues.length} issue</span>;
+      return (
+        <ul className="grid gap-1.5">
+          {t.derived.issues.map((i) => (
+            <li key={i.key} className="flex flex-wrap items-baseline gap-1.5">
+              {i.category && <Badge tone="neutral">{i.category}</Badge>}
+              <span className="text-pf-body">{i.summary}</span>
+              {i.status && <Badge tone={i.status.toLowerCase() === "xong" ? "success" : /dev|ts/i.test(i.status) ? "warn" : "neutral"}>{i.status}</Badge>}
+            </li>
+          ))}
+        </ul>
+      );
     case "ticket_url":
       return (
         <a href={text} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-pf-primary-hi hover:underline">

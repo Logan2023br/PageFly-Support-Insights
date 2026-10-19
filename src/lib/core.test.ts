@@ -346,3 +346,39 @@ describe("Issue lặp lại", () => {
     expect(r.storeList[0]).toMatchObject({ domain: "s1.myshopify.com", tickets: 2, sameIssueAgain: true });
   });
 });
+
+import { parseIssues } from "@/lib/data/normalize";
+describe("issues_all", () => {
+  it("tách từng issue, category và trạng thái", () => {
+    const items = parseIssues({ issues_all: "Publish: Page cannot be published [đợi dev] | style: Banner resize [xong]", category_issue: "Publish", issue_summary: "x" }, "s1");
+    expect(items).toEqual([
+      { key: "s1#0", category: "Publish", summary: "Page cannot be published", status: "đợi dev", legacy: false },
+      { key: "s1#1", category: "Style", summary: "Banner resize", status: "xong", legacy: false },
+    ]);
+  });
+  it("ticket cũ chưa có issues_all: dùng category_issue + issue_summary", () => {
+    expect(parseIssues({ issues_all: null, category_issue: "ATC", issue_summary: "ATC lỗi" }, "s2")).toEqual([{ key: "s2#0", category: "ATC", summary: "ATC lỗi", status: null, legacy: true }]);
+  });
+  it("issue lặp lại tính theo từng issue con trong ticket", () => {
+    const { tickets } = normalizeRows(
+      ["session_id", "time_cx_contact", "category_ticket", "category_issue", "issue_summary", "store_domain", "issues_all"],
+      [
+        ["a", "10:00 05/10/2026", "Issue", "Style", "Many things", "s1.myshopify.com", "Style: Banner [xong] | Page size: 256KB [chờ khách]"],
+        ["b", "10:00 06/10/2026", "Issue", "Page size", "Too big", "s2.myshopify.com", "Page size: Over 256KB [đợi dev]"],
+      ],
+    );
+    const g: IssueGroups = { groups: { g1: { id: "g1", category: "Page size", title: "Page vượt 256KB", createdAt: 0 } }, assign: { "a#1": "g1", "b#0": "g1" }, updatedAt: 0 };
+    const r = analyzeRepeats(tickets, tickets, g, { from: "2026-10-01", to: "2026-10-10" });
+    expect(r.issueItems).toBe(3);
+    expect(r.repeatIssues).toBe(1);
+    expect(r.issues[0]).toMatchObject({ title: "Page vượt 256KB", stores: 2, unresolved: 2, devTickets: 1 });
+  });
+});
+
+describe("Feedback form qua nhiều lần recap", () => {
+  it("giữ feedback_form của lần recap cũ khi lần mới để trống", () => {
+    const { tickets } = normalizeRows(["session_id", "recap_at_vn", "feedback_form"], [["s", "2026-10-12 10:00", "Feature request · X #F1"], ["s", "2026-10-13 10:00", ""]]);
+    expect(tickets).toHaveLength(1);
+    expect(tickets[0].feedback_form).toBe("Feature request · X #F1");
+  });
+});

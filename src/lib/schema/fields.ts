@@ -87,7 +87,7 @@ export const MOODS = ["Excited", "Happy", "Neutral", "Worried", "Frustrated", "A
 export const REVIEW_VERDICT = ["QUALIFIED", "RIPE", "NOT_YET", "DO_NOT_ASK"] as const;
 export const PRIORITY = ["Urgent", "High", "Normal"] as const;
 export const TEAM_OWNER = ["CS", "Dev", "Billing/Refund", "Marketing", "Partner", "Free service"] as const;
-export const TYPE_ISSUE = ["dev_note", "normal"] as const;
+export const TYPE_ISSUE = ["dev_note", "normal", "outreach"] as const;
 export const TYPE_USER = ["Khách vãng lai", "Khách đã sử dụng"] as const;
 
 export type CategoryTicket = (typeof CATEGORY_TICKET)[number];
@@ -327,6 +327,25 @@ export const FIELDS: readonly FieldDef[] = [
     description: "Mô tả ngắn gọn issue, tối đa 50 ký tự.",
     example: "Flymate lỗi không build được",
   },
+  { key: "issue_count", label: "Số issue", group: "ticket", kind: "number", description: "Số issue khác nhau khách nêu trong ticket (một ticket có thể nhiều issue).", example: "3" },
+  {
+    key: "issues_all",
+    label: "Tất cả issue",
+    group: "ticket",
+    kind: "longtext",
+    hiddenByDefault: true,
+    description: "Từng issue trong ticket, cách nhau bởi \" | \", dạng \"Category: tóm tắt [trạng thái]\". Trạng thái: xong / mở / chờ khách / đợi dev / đợi TS.",
+    example: "Publish: Page cannot be published [đợi dev] | Style: Banner resize [xong]",
+  },
+  {
+    key: "feedback_form",
+    label: "Feedback form",
+    group: "ticket",
+    kind: "longtext",
+    hiddenByDefault: true,
+    description: "Góp ý / yêu cầu tính năng được ghi vào form feedback từ ticket này: \"Loại · nội dung (người ghi, ngày) #mã\".",
+    example: "Feature request · Nút Pause của A/B test khó tìm (Aldwin, 12/10) #F782",
+  },
   {
     key: "type_issue",
     label: "Loại xử lý",
@@ -334,7 +353,7 @@ export const FIELDS: readonly FieldDef[] = [
     kind: "enum",
     values: TYPE_ISSUE,
     valueAliases: { "dev note": "dev_note", devnote: "dev_note", "dev-note": "dev_note", thường: "normal" },
-    description: "dev_note nếu issue đã có segment dev_note từ trước, ngược lại normal.",
+    description: "dev_note nếu issue đã có segment dev_note từ trước; outreach nếu là ticket mình chủ động liên hệ khách; còn lại normal.",
     example: "normal",
   },
   {
@@ -450,6 +469,14 @@ export const FIELDS: readonly FieldDef[] = [
     kind: "duration",
     description: "Từ tin nhắn đầu của khách đến tin nhắn cuối của FL. Định dạng ngày-giờ-phút-giây.",
     example: "0-01-15-00",
+  },
+  {
+    key: "avg_reply_time",
+    label: "Trả lời TB trong ticket",
+    group: "handling",
+    kind: "duration",
+    description: "Thời gian trung bình từ tin của khách đến tin trả lời của mình trong suốt ticket.",
+    example: "1m 23s",
   },
   {
     key: "time_pic_max_reply",

@@ -75,7 +75,7 @@ async function Dashboard({ searchParams }: { searchParams: Promise<SearchParams>
   const groups = showRepeat ? await readGroups() : null;
   const repeat = groups ? analyzeRepeats(ds.tickets, d.cur, groups, q.period) : null;
   const toGroup = groups ? pending(ds.tickets, groups).length : 0;
-  if (toGroup > 0) after(() => ensureGroups(ds.tickets, { maxBatches: 3 }).catch(() => undefined));
+  if (toGroup > 0) after(() => ensureGroups(ds.tickets, { maxBatches: 5 }).catch(() => undefined));
   const repView: RepeatView | null = sp.rep === "tickets" || sp.rep === "stores" ? sp.rep : null;
 
   return (

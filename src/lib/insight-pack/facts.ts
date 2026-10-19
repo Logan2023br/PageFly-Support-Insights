@@ -6,7 +6,7 @@ import { countBy, formatDelta, formatValue, judge } from "@/lib/metrics/compute"
 import { METRICS } from "@/lib/metrics/defs";
 import { people } from "@/lib/metrics/performance";
 import { devBacklog, reviewFunnel } from "@/lib/reports";
-import { groupOf, isGroupable, type IssueGroups } from "@/lib/repeat/analysis";
+import { groupableItems, groupOf, itemOpen, type IssueGroups, type TicketIssue } from "@/lib/repeat/analysis";
 import type { PackFact, PackTicket } from "./types";
 
 const WEEKS = 8;
@@ -103,19 +103,23 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
   }
 
   // 3) Issue lặp lại (nhóm AI gom): 4 tuần gần nhất.
-  const gTickets = last4.filter(isGroupable);
-  const byGroup = new Map<string, { title: string; category: string; ts: Ticket[] }>();
-  for (const t of gTickets) {
-    const g = groupOf(t, groups);
-    const e = byGroup.get(g.id) ?? { title: g.title, category: g.category, ts: [] };
-    e.ts.push(t);
+  const byGroup = new Map<string, { title: string; category: string; items: TicketIssue[] }>();
+  for (const x of last4.flatMap(groupableItems)) {
+    const g = groupOf(x, groups);
+    const e = byGroup.get(g.id) ?? { title: g.title, category: g.category, items: [] };
+    e.items.push(x);
     byGroup.set(g.id, e);
   }
-  const repeated = [...byGroup].filter(([, e]) => e.ts.length >= 2).sort((a, b) => b[1].ts.length - a[1].ts.length).slice(0, 40);
+  const ticketsOf = (xs: TicketIssue[]) => [...new Map(xs.map((x) => [x.ticket.id, x.ticket])).values()];
+  const repeated = [...byGroup]
+    .map(([id, e]) => [id, { ...e, ts: ticketsOf(e.items) }] as const)
+    .filter(([, e]) => e.ts.length >= 2)
+    .sort((a, b) => b[1].ts.length - a[1].ts.length)
+    .slice(0, 40);
   add({
     id: "breakdown:repeat_issues",
     label: "Issue lặp lại nhiều nhất (4 tuần)",
-    note: "Issue (AI gom các ticket cùng vấn đề cụ thể) có từ 2 ticket trở lên trong 4 tuần gần nhất.",
+    note: "Issue (AI gom các issue con cùng vấn đề cụ thể, từ cột issues_all) xuất hiện ở từ 2 ticket trở lên trong 4 tuần gần nhất.",
     rows: repeated.slice(0, 20).map(([, e]) => ({ key: e.title, value: e.ts.length, display: `${e.ts.length} ticket`, extra: `${e.category} · ${new Set(e.ts.map((t) => t.store_domain).filter(Boolean)).size} store` })),
   });
   for (const [id, e] of repeated) {
@@ -125,10 +129,10 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     add({
       id: `issue:${id}`,
       label: e.title,
-      note: `Issue lặp lại thuộc ${e.category}. 4 tuần: ${e.ts.length} ticket từ ${new Set(e.ts.map((t) => t.store_domain).filter(Boolean)).size} store; chưa resolved ${e.ts.filter((t) => !t.derived.resolved).length}; cần Dev ${e.ts.filter((t) => t.derived.handler === "Dev").length}; churn risk ${e.ts.filter((t) => t.churn_risk === true).length}.`,
+      note: `Issue lặp lại thuộc ${e.category}. 4 tuần: ${e.ts.length} ticket từ ${new Set(e.ts.map((t) => t.store_domain).filter(Boolean)).size} store; chưa xong ${e.items.filter(itemOpen).length}; cần Dev ${e.items.filter((x) => /dev/i.test(x.item.status ?? "")).length}; churn risk ${e.ts.filter((t) => t.churn_risk === true).length}.`,
       value: `${wk} ticket tuần này`,
       prev: `${pk} ticket tuần trước`,
-      series: weekly((w) => w.filter((t) => isGroupable(t) && groupOf(t, groups).id === id).length),
+      series: weekly((w) => w.filter((t) => groupableItems(t).some((x) => groupOf(x, groups).id === id)).length),
       seriesFormat: "count",
       rows: countBy(e.ts, (t) => t.root_cause).map((b) => ({ key: `Nguyên nhân: ${b.key}`, value: b.count })),
       ticketIds: sorted.slice(0, 15).map((t) => t.id),
@@ -257,7 +261,10 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     ci: t.category_issue,
     page: t.page_issue,
     issue: short(t.issue_summary, 160),
-    grp: isGroupable(t) ? groupOf(t, groups).title : undefined,
+    issues: t.derived.issues.length > 1 ? t.derived.issues.map((i) => `${i.category ?? "?"}: ${short(i.summary, 70)}${i.status ? ` [${i.status}]` : ""}`) : undefined,
+    grp: groupableItems(t).map((x) => groupOf(x, groups).title).join(" | ") || undefined,
+    avgReply: t.avg_reply_time != null ? formatDuration(t.avg_reply_time) : undefined,
+    form: short(t.feedback_form, 140) || undefined,
     root: t.root_cause,
     res: t.resolution,
     by: t.derived.handler,

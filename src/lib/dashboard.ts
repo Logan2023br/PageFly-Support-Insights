@@ -36,7 +36,8 @@ export const MAIN_TILES: Record<Query["cat"], string[][]> = {
 function moreTiles(cat: Query["cat"]): string[] {
   const main = new Set(MAIN_TILES[cat].flat());
   const volume = cat === "all" ? ["feedback", "issue", "improve"] : [];
-  return METRICS.filter((m) => !main.has(m.key) && (m.group !== "volume" || volume.includes(m.key))).map((m) => m.key);
+  const catKeys = ["feedback", "issue", "improve"];
+  return METRICS.filter((m) => !main.has(m.key) && (!catKeys.includes(m.key) || volume.includes(m.key))).map((m) => m.key);
 }
 
 export interface Tile {

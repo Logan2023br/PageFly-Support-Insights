@@ -1,6 +1,6 @@
 import { FIELDS, FIELD_BY_KEY, MOODS, issueArea, type FieldDef, type Mood, type Role } from "@/lib/schema/fields";
 import { parseBool, parseDuration, parseList, parseNumber, parseVnDateTime, vnDayKey } from "./parse";
-import type { DataIssue, Handler, ReviewAskedStatus, Ticket } from "./types";
+import type { DataIssue, Handler, IssueItem, ReviewAskedStatus, Ticket } from "./types";
 import { buildNameMap, type NameMerge } from "./names";
 import { actionReasons } from "./attention";
 
@@ -45,6 +45,23 @@ export function mapHeaders(header: string[]): HeaderMap {
   if (seen.has("mood_label_cx_end_to_end")) seen.add("mood_label_cx");
   const missing = FIELDS.filter((f) => !seen.has(f.key)).map((f) => f.key);
   return { columns, legacyTsColumn, unknown, missing };
+}
+
+/** Tách issues_all ("Category: tóm tắt [trạng thái] | ...") thành từng issue; thiếu thì dùng category_issue + issue_summary. */
+export function parseIssues(t: Pick<Ticket, "issues_all" | "category_issue" | "issue_summary">, id: string): IssueItem[] {
+  const parts = (t.issues_all ?? "")
+    .split(/\s*\|\s*/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (!parts.length) return t.issue_summary ? [{ key: `${id}#0`, category: t.category_issue, summary: t.issue_summary, status: null, legacy: true }] : [];
+  return parts.map((part, i) => {
+    const status = part.match(/\[([^\]]+)\]\s*$/)?.[1]?.trim() ?? null;
+    const body = part.replace(/\[[^\]]+\]\s*$/, "").trim();
+    const colon = body.indexOf(":");
+    const rawCat = colon > 0 ? body.slice(0, colon).trim() : null;
+    const cat = rawCat ? canonicalEnum(FIELD_BY_KEY.category_issue, rawCat).value : t.category_issue;
+    return { key: `${id}#${i}`, category: cat, summary: colon > 0 ? body.slice(colon + 1).trim() : body, status, legacy: false };
+  });
 }
 
 function canonicalEnum(def: FieldDef, raw: string): { value: string; known: boolean } {
@@ -244,6 +261,7 @@ export function normalizeRows(header: string[], rows: string[][]): {
       total_time_handle_ts: durationField("total_time_handle_ts"),
       total_time_handle: null,
       total_time_ticket: durationField("total_time_ticket"),
+      avg_reply_time: durationField("avg_reply_time"),
       time_pic_max_reply: durationField("time_pic_max_reply"),
       root_cause: get("root_cause"),
       resolution: enumField("resolution"),
@@ -257,6 +275,9 @@ export function normalizeRows(header: string[], rows: string[][]): {
       upsell_signal: get("upsell_signal"),
       churn_risk: boolField("churn_risk"),
       next_action: get("next_action"),
+      issue_count: numField("issue_count"),
+      issues_all: get("issues_all"),
+      feedback_form: get("feedback_form"),
       session_id: sessionId,
       ticket_url: get("ticket_url"),
       review_asked: get("review_asked"),
@@ -308,6 +329,7 @@ export function normalizeRows(header: string[], rows: string[][]): {
     const appStars = stars(t.app_review);
 
     t.derived = {
+      issues: parseIssues(t, id),
       // Ticket thuộc ngày khách contact (vd. contact 22h hôm trước, recap 1h sáng nay → tính hôm trước).
       at: t.time_cx_contact ?? t.recap_at_vn,
       dayKey: (t.time_cx_contact ?? t.recap_at_vn) != null ? vnDayKey((t.time_cx_contact ?? t.recap_at_vn)!) : null,
@@ -351,10 +373,13 @@ export function normalizeRows(header: string[], rows: string[][]): {
     if (prev) {
       duplicates++;
       t.derived.recapCount = prev.ticket.derived.recapCount + 1;
+      // Feedback form có thể chỉ được ghi ở 1 lần recap: giữ lại dù lần recap mới nhất để trống.
       if ((prev.ticket.recap_at_vn ?? 0) > (t.recap_at_vn ?? 0)) {
         prev.ticket.derived.recapCount = t.derived.recapCount;
+        prev.ticket.feedback_form ??= t.feedback_form;
         return;
       }
+      t.feedback_form ??= prev.ticket.feedback_form;
     }
     byId.set(id, { ticket: t, issues: rowIssues });
   });

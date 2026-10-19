@@ -56,6 +56,7 @@ export const FACET_KEYS = [
   "review_asked_status",
   "upsell",
   "attention",
+  "has_feedback_form",
   "triggered_by",
   "name_pic",
   "shift",
@@ -85,6 +86,7 @@ export const FACET_LABELS: Record<FacetKey, string> = {
   review_asked_status: "Hỏi review",
   upsell: "Upsell",
   attention: "Cần chú ý",
+  has_feedback_form: "Có feedback form",
   triggered_by: "FL",
   name_pic: "PIC",
   shift: "Ca",
@@ -121,6 +123,8 @@ export function facetValues(t: Ticket, key: FacetKey): string[] {
       return [t.derived.upsell ? "Yes" : "No"];
     case "attention":
       return [t.derived.attention ? "Yes" : "No"];
+    case "has_feedback_form":
+      return [t.feedback_form ? "Yes" : "No"];
     case "churn_risk":
     case "escalated":
       return [yesNo(t[key])];

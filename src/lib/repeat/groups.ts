@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { Ticket } from "@/lib/data/types";
 import { kv } from "@/lib/store/kv";
 import { aiConfigured } from "@/lib/ai/insights";
-import { fallbackKey, isGroupable, type IssueGroups } from "./analysis";
+import { fallbackKey, groupableItems, type IssueGroups, type TicketIssue } from "./analysis";
 
 // "Issue" = một vấn đề cụ thể (vd "Page vượt 256KB, không publish được"), gom từ issue_summary viết tự do.
 // AI (Claude Haiku) gán từng ticket Issue vào 1 nhóm; kết quả lưu KV, chỉ ticket mới mới phải gán.
@@ -21,9 +21,9 @@ export async function readGroups(): Promise<IssueGroups> {
   return (await kv().get<IssueGroups>(KEY).catch(() => null)) ?? EMPTY;
 }
 
-/** Ticket Issue có tóm tắt nhưng chưa được gán nhóm. */
-export function pending(tickets: Ticket[], g: IssueGroups): Ticket[] {
-  return tickets.filter((t) => isGroupable(t) && !g.assign[t.id]);
+/** Issue con (từ issues_all, hoặc tóm tắt của ticket cũ) chưa được gán nhóm. */
+export function pending(tickets: Ticket[], g: IssueGroups): TicketIssue[] {
+  return tickets.flatMap(groupableItems).filter((x) => !g.assign[x.item.key] && !(x.item.legacy && g.assign[x.ticket.id]));
 }
 
 const Out = z.object({
@@ -48,13 +48,13 @@ Quy tắc (rất quan trọng, ưu tiên CHÍNH XÁC hơn gom được nhiều):
 - Tên nhóm tiếng Việt, cụ thể như một dòng mô tả lỗi: nêu triệu chứng + phạm vi, ví dụ "Page vượt 256KB nên không publish được", "Nút Add to cart không phản hồi trên live". Tránh tên chung chung như "Lỗi hiển thị", "Vấn đề publish".
 - Giữ category_issue của ticket cho nhóm.`;
 
-async function assignBatch(batch: Ticket[], g: IssueGroups): Promise<void> {
-  const cats = new Set(batch.map((t) => t.category_issue ?? "Khác"));
+async function assignBatch(batch: TicketIssue[], g: IssueGroups): Promise<void> {
+  const cats = new Set(batch.map((x) => x.item.category ?? "Khác"));
   const existing = Object.values(g.groups)
     .filter((x) => cats.has(x.category))
     .slice(0, 400)
     .map((x) => ({ id: x.id, category: x.category, title: x.title }));
-  const items = batch.map((t, i) => ({ ref: i, category: t.category_issue ?? "Khác", page: t.page_issue, summary: t.issue_summary }));
+  const items = batch.map((x, i) => ({ ref: i, category: x.item.category ?? "Khác", page: x.ticket.page_issue, summary: x.item.summary }));
   const client = new Anthropic();
   const res = await client.messages.parse({
     model: process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5",
@@ -73,17 +73,17 @@ async function assignBatch(batch: Ticket[], g: IssueGroups): Promise<void> {
     g.groups[id] = { id, category: n.category, title: n.title.trim(), createdAt: now };
   }
   for (const it of out.items) {
-    const t = batch[it.ref];
-    if (!t) continue;
+    const x = batch[it.ref];
+    if (!x) continue;
     const id = keyToId.get(it.group) ?? (g.groups[it.group] ? it.group : null);
-    if (id) g.assign[t.id] = id;
+    if (id) g.assign[x.item.key] = id;
   }
-  // AI bỏ sót ticket nào thì tạo nhóm riêng cho ticket đó, để lần sau không phải gán lại mãi.
-  for (const t of batch) {
-    if (g.assign[t.id]) continue;
+  // AI bỏ sót issue nào thì tạo nhóm riêng cho issue đó, để lần sau không phải gán lại mãi.
+  for (const x of batch) {
+    if (g.assign[x.item.key]) continue;
     const id = `g${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    g.groups[id] = { id, category: t.category_issue ?? "Khác", title: (t.issue_summary ?? "").slice(0, 90), createdAt: now };
-    g.assign[t.id] = id;
+    g.groups[id] = { id, category: x.item.category ?? "Khác", title: x.item.summary.slice(0, 90), createdAt: now };
+    g.assign[x.item.key] = id;
   }
 }
 
@@ -102,10 +102,10 @@ export async function ensureGroups(tickets: Ticket[], opts: { maxBatches?: numbe
   let assigned = 0;
   try {
     // Gom theo từng category: AI thấy cả category cùng lúc nên nhóm nhất quán hơn.
-    const byCat = new Map<string, Ticket[]>();
-    for (const t of [...todo].sort((a, b) => (a.derived.at ?? 0) - (b.derived.at ?? 0))) {
-      const k = t.category_issue ?? "Khác";
-      byCat.set(k, [...(byCat.get(k) ?? []), t]);
+    const byCat = new Map<string, TicketIssue[]>();
+    for (const x of [...todo].sort((a, b) => (a.ticket.derived.at ?? 0) - (b.ticket.derived.at ?? 0))) {
+      const k = x.item.category ?? "Khác";
+      byCat.set(k, [...(byCat.get(k) ?? []), x]);
     }
     const batches = [...byCat.values()].flatMap((ts) => Array.from({ length: Math.ceil(ts.length / BATCH) }, (_, i) => ts.slice(i * BATCH, (i + 1) * BATCH)));
     for (const batch of batches.slice(0, opts.maxBatches ?? MAX_BATCHES_PER_RUN)) {

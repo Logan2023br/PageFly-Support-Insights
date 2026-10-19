@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { ChevronDown, ExternalLink, Info, Repeat2, Sparkles, Store } from "lucide-react";
-import type { Ticket } from "@/lib/data/types";
 import { formatVnDate } from "@/lib/data/parse";
-import { bucketDaily, REPEAT_MIN, type RepeatAnalysis, type RepeatIssue } from "@/lib/repeat/analysis";
+import { bucketDaily, itemOpen, REPEAT_MIN, type RepeatAnalysis, type RepeatIssue, type TicketIssue } from "@/lib/repeat/analysis";
 import { RepeatDailyChart } from "@/components/charts/charts";
 import { BarList } from "@/components/charts/bar-list";
 import { Badge, cx, Empty, Panel, PanelTitle } from "@/components/ui";
@@ -45,17 +44,17 @@ export function RepeatIssues({
               <Info size={13} strokeWidth={1.75} className="text-pf-faint group-hover/rinfo:text-pf-primary-hi" />
               <span className="pointer-events-none invisible absolute bottom-full left-0 z-40 mb-2 w-[min(340px,calc(100vw-48px))] rounded-[12px] border border-pf-border bg-pf-bg-deep px-3 py-2.5 text-[11.5px] font-normal leading-relaxed text-pf-body opacity-0 shadow-pf-float transition-opacity group-hover/rinfo:visible group-hover/rinfo:opacity-100">
                 <span className="mb-1 block font-semibold text-white">Cách tính</span>
-                AI đọc tóm tắt (issue_summary) của từng ticket Issue và gom các ticket cùng một vấn đề cụ thể thành 1 issue, ví dụ &ldquo;Page vượt 256KB nên không publish được&rdquo;. Issue có từ {REPEAT_MIN} ticket trở lên trong khoảng đang lọc là <b className="text-white">issue lặp lại</b>. Không tính nhóm Unclear/Internal (khách chưa nêu vấn đề).
+                Một ticket có thể có nhiều issue (cột issues_all). AI đọc từng issue và gom các issue cùng một vấn đề cụ thể, ví dụ &ldquo;Page vượt 256KB nên không publish được&rdquo;. Issue xuất hiện ở từ {REPEAT_MIN} ticket trở lên trong khoảng đang lọc là <b className="text-white">issue lặp lại</b>. Không tính nhóm Unclear/Internal (khách chưa nêu vấn đề).
               </span>
             </span>
           </h2>
           <p className="mt-0.5 text-[12px] text-pf-muted">
-            {periodLabel} · {a.distinctIssues} issue khác nhau trong {a.issueTickets} ticket Issue, {a.repeatIssues} issue lặp lại
+            {periodLabel} · {a.issueItems} issue trong {a.issueTickets} ticket, gom thành {a.distinctIssues} issue khác nhau, {a.repeatIssues} issue lặp lại
           </p>
         </div>
         {grouping > 0 && (
           <span className="inline-flex items-center gap-1.5 text-[11.5px] text-pf-violet">
-            <Sparkles size={12} strokeWidth={1.75} /> AI đang gom nhóm {grouping} ticket mới, số liệu sẽ cập nhật sau ít phút
+            <Sparkles size={12} strokeWidth={1.75} /> AI đang gom nhóm {grouping} issue mới, số liệu sẽ cập nhật sau ít phút
           </span>
         )}
       </div>
@@ -68,7 +67,7 @@ export function RepeatIssues({
           value={a.repeatTickets}
           unit="ticket"
           parts={[`${a.repeatIssues} issue`, `${a.repeatCategories} category`]}
-          foot={`${pct(a.repeatTickets, a.issueTickets)} trong ${a.issueTickets} ticket Issue`}
+          foot={`${pct(a.repeatTickets, a.issueTickets)} trong ${a.issueTickets} ticket có issue`}
           share={a.issueTickets ? a.repeatTickets / a.issueTickets : 0}
         />
         <BigTile
@@ -78,7 +77,7 @@ export function RepeatIssues({
           value={a.stores}
           unit="store"
           parts={[`${a.storesAgain} store gặp lại cùng issue`, `${a.paidStores} store trả phí · ${money(a.monthlyRevenue)}/tháng`]}
-          foot={`${pct(a.stores, a.issueStores)} trong ${a.issueStores} store có ticket Issue${a.churnStores ? ` · ${a.churnStores} store có churn risk` : ""}`}
+          foot={`${pct(a.stores, a.issueStores)} trong ${a.issueStores} store có issue${a.churnStores ? ` · ${a.churnStores} store có churn risk` : ""}`}
           share={a.issueStores ? a.stores / a.issueStores : 0}
         />
       </div>
@@ -199,7 +198,7 @@ function IssueCard({ i, open }: { i: RepeatIssue; open: boolean }) {
             <Badge>{i.stores} store</Badge>
             {i.storesAgain > 0 && <Badge tone="danger">{i.storesAgain} store gặp lại</Badge>}
             {i.existedBefore ? <Badge tone="warn" title={`Lần đầu gặp ${formatVnDate(i.firstSeen)}`}>Có từ {dm(i.firstSeen)}</Badge> : <Badge>Mới trong kỳ</Badge>}
-            {i.unresolved > 0 && <Badge tone="warn">{i.unresolved} chưa resolved</Badge>}
+            {i.unresolved > 0 && <Badge tone="warn">{i.unresolved} chưa xong</Badge>}
             {i.devTickets > 0 && <Badge tone="danger">{i.devTickets} cần Dev</Badge>}
             {i.churn > 0 && <Badge tone="danger">{i.churn} churn risk</Badge>}
           </div>
@@ -214,7 +213,7 @@ function IssueCard({ i, open }: { i: RepeatIssue; open: boolean }) {
         <table className="w-full min-w-[640px] border-collapse text-left">
           <thead>
             <tr className="text-[10.5px] uppercase tracking-[0.06em] text-pf-faint">
-              {["Khách contact", "Store", "FL", "Kết quả", "Tóm tắt", ""].map((h, k) => (
+              {["Khách contact", "Store", "FL", "Trạng thái issue", "Khách nói", ""].map((h, k) => (
                 <th key={k} className="px-3 py-2 font-semibold">
                   {h}
                 </th>
@@ -222,8 +221,8 @@ function IssueCard({ i, open }: { i: RepeatIssue; open: boolean }) {
             </tr>
           </thead>
           <tbody>
-            {i.tickets.map((t) => (
-              <TicketRow key={t.id} t={t} />
+            {i.items.map((x) => (
+              <TicketRow key={x.item.key} x={x} />
             ))}
           </tbody>
         </table>
@@ -232,7 +231,9 @@ function IssueCard({ i, open }: { i: RepeatIssue; open: boolean }) {
   );
 }
 
-function TicketRow({ t }: { t: Ticket }) {
+function TicketRow({ x }: { x: TicketIssue }) {
+  const t = x.ticket;
+  const open = itemOpen(x);
   return (
     <tr className="border-t border-pf-border/60 text-[12px] hover:bg-pf-card/60">
       <td className="whitespace-nowrap px-3 py-2 text-pf-muted">{formatVnDate(t.derived.at)}</td>
@@ -247,10 +248,11 @@ function TicketRow({ t }: { t: Ticket }) {
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-pf-body">{t.triggered_by ?? "—"}</td>
       <td className="whitespace-nowrap px-3 py-2">
-        <span className={t.derived.resolved ? "text-pf-success" : "text-pf-warn"}>{t.resolution ?? "—"}</span>
+        <span className={open ? "text-pf-warn" : "text-pf-success"}>{x.item.status ?? t.resolution ?? "—"}</span>
       </td>
       <td className="max-w-[360px] px-3 py-2 text-pf-muted">
-        <span className="line-clamp-2">{t.issue_summary}</span>
+        <span className="line-clamp-2">{x.item.summary}</span>
+        {t.derived.issues.length > 1 && <span className="text-[11px] text-pf-faint">ticket có {t.derived.issues.length} issue</span>}
       </td>
       <td className="px-3 py-2 text-right">
         {t.ticket_url && (

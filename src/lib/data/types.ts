@@ -3,6 +3,18 @@ import type { CategoryTicket, Mood, Role } from "@/lib/schema/fields";
 export type Handler = "FL" | "TS" | "Dev";
 export type ReviewAskedStatus = "already" | "asked" | "forgot" | "not_suitable" | "unknown";
 
+/** Một issue con trong ticket. */
+export interface IssueItem {
+  /** `${ticketId}#${thứ tự}` */
+  key: string;
+  category: string | null;
+  summary: string;
+  /** xong / mở / chờ khách / đợi dev / đợi TS (null nếu không ghi). */
+  status: string | null;
+  /** true = lấy từ category_issue + issue_summary vì ticket chưa có issues_all. */
+  legacy: boolean;
+}
+
 /** Một ticket đã chuẩn hoá. Khoá trùng tên cột trong hợp đồng; phần `derived` do web tự tính. */
 export interface Ticket {
   id: string;
@@ -55,6 +67,7 @@ export interface Ticket {
   /** Suy ra: thời gian handle của bậc xử lý cao nhất (TS nếu có, ngược lại FL). */
   total_time_handle: number | null;
   total_time_ticket: number | null;
+  avg_reply_time: number | null;
   time_pic_max_reply: number | null;
   root_cause: string | null;
   resolution: string | null;
@@ -68,11 +81,16 @@ export interface Ticket {
   upsell_signal: string | null;
   churn_risk: boolean | null;
   next_action: string | null;
+  issue_count: number | null;
+  issues_all: string | null;
+  feedback_form: string | null;
   session_id: string | null;
   ticket_url: string | null;
   review_asked: string | null;
 
   derived: {
+    /** Từng issue trong ticket (từ issues_all; thiếu thì lấy category_issue + issue_summary). */
+    issues: IssueItem[];
     /** Mốc thời gian của ticket: lúc khách contact (time_cx_contact), thiếu thì lấy lúc recap. */
     at: number | null;
     /** Ngày (giờ VN) của `at` — dùng để lọc theo khoảng thời gian. */
