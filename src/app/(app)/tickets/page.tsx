@@ -45,6 +45,7 @@ const VISIBLE_FACETS: FacetKey[] = [
   "csat",
   "churn_risk",
   "attention",
+  "has_feedback_form",
   "upsell",
   "review_asked_status",
   "triggered_by",
