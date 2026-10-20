@@ -34,7 +34,7 @@ export interface PackFact {
   prev?: string;
   delta?: string;
   tone?: "good" | "bad" | "neutral";
-  /** Chuỗi theo tuần (8 tuần gần nhất, tuần cuối = tuần của pack). */
+  /** Chuỗi 8 kỳ liên tiếp cùng độ dài, kỳ cuối = kỳ của pack. */
   series?: { label: string; v: number | null }[];
   seriesFormat?: "count" | "pct" | "duration" | "money" | "score5";
   /** Bảng xếp hạng (vd theo category, theo người). */
@@ -128,3 +128,7 @@ export interface PackIndexEntry {
   high: number;
   auto: boolean;
 }
+
+/** Mỗi khoảng ngày có đúng một pack (id cố định) — tạo một lần, lưu lại, mở lại không gọi AI. */
+export const packId = (from: string, to: string) => `${from}_${to}`;
+export const PACK_MAX_DAYS = 92;

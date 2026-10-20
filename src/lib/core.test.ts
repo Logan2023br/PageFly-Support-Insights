@@ -394,3 +394,24 @@ describe("feedback tab", async () => {
     expect(feedbackText(t)).toBe("Feature request · Nút Pause khó tìm");
   });
 });
+
+describe("insight pack facts theo khoảng tuỳ chọn", async () => {
+  const { buildFacts, DIGEST_MAX } = await import("./insight-pack/facts");
+  const { header, rows } = generateMockSheet(120, Date.UTC(2026, 9, 20, 5));
+  const { tickets } = normalizeRows(header, rows);
+  const groups = { groups: {}, assign: {}, updatedAt: 0 };
+  it("30 ngày: 8 kỳ 30 ngày, kỳ trước 30 ngày, digest có giới hạn", () => {
+    const b = buildFacts(tickets, "2026-09-20", "2026-10-19", groups, "2026-10-20");
+    const total = b.facts["metric:total"];
+    expect(total.series).toHaveLength(8);
+    expect(total.series![6].label).toBe("21/08");
+    expect(b.totals.tickets).toBeGreaterThan(DIGEST_MAX);
+    expect(b.digest).toHaveLength(DIGEST_MAX);
+    expect(Object.values(b.facts).some((f) => f.label.includes("tuần"))).toBe(false);
+  });
+  it("tuần: giữ cách tính như cũ", () => {
+    const b = buildFacts(tickets, "2026-10-12", "2026-10-18", groups, "2026-10-20");
+    expect(b.facts["metric:total"].series![6].label).toBe("05/10");
+    expect(b.facts["breakdown:repeat_issues"]?.label ?? "Issue lặp lại nhiều nhất (4 tuần)").toContain("4 tuần");
+  });
+});

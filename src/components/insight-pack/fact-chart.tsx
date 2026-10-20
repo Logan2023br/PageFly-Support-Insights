@@ -3,7 +3,7 @@
 import { TrendChart } from "@/components/charts/charts";
 import type { PackFact } from "@/lib/insight-pack/types";
 
-/** Vẽ một bằng chứng: chuỗi 8 tuần → biểu đồ đường; bảng xếp hạng → thanh ngang. Số liệu lấy từ kho (code tính), không từ AI. */
+/** Vẽ một bằng chứng: chuỗi 8 kỳ → biểu đồ đường; bảng xếp hạng → thanh ngang. Số liệu lấy từ kho (code tính), không từ AI. */
 export function FactChart({ fact, height = 200 }: { fact: PackFact; height?: number }) {
   return (
     <div className="rounded-[16px] border border-pf-border bg-white/[.02] p-3.5">
@@ -21,7 +21,7 @@ export function FactChart({ fact, height = 200 }: { fact: PackFact; height?: num
       ) : (
         <FactRows fact={fact} max={10} />
       )}
-      {fact.series?.length ? <p className="mt-1.5 text-[11px] text-pf-faint">8 tuần, mốc cuối là tuần của pack (theo ngày bắt đầu tuần).</p> : null}
+      {fact.series?.length ? <p className="mt-1.5 text-[11px] text-pf-faint">8 kỳ liên tiếp cùng độ dài, mốc cuối là kỳ của pack (ghi theo ngày bắt đầu mỗi kỳ).</p> : null}
     </div>
   );
 }

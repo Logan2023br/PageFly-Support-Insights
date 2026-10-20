@@ -1,6 +1,6 @@
 // Kho bằng chứng của Insight Pack: mọi con số do code tính từ dữ liệu thật.
 // AI chỉ đọc kho này và dẫn chứng bằng id; web vẽ biểu đồ / hiện số từ đây chứ không lấy số AI viết.
-import { addDays, formatDuration, VN_OFFSET_MS } from "@/lib/data/parse";
+import { addDays, diffDays, formatDuration, VN_OFFSET_MS } from "@/lib/data/parse";
 import type { Ticket } from "@/lib/data/types";
 import { countBy, formatDelta, formatValue, judge } from "@/lib/metrics/compute";
 import { METRICS } from "@/lib/metrics/defs";
@@ -11,6 +11,22 @@ import type { PackFact, PackTicket } from "./types";
 import { feedbackText, isFeedback } from "@/lib/data/category";
 
 const WEEKS = 8;
+/** Số ticket tối đa gửi AI đọc chi tiết (vừa ngữ cảnh Haiku). Kỳ dài hơn thì chọn ca nhiều thông tin nhất; số liệu tổng vẫn tính trên toàn bộ. */
+export const DIGEST_MAX = 450;
+
+function pickDigest(cur: Ticket[]): Ticket[] {
+  if (cur.length <= DIGEST_MAX) return cur;
+  const weight = (t: Ticket) =>
+    (t.feedback_form ? 4 : 0) +
+    (t.churn_risk ? 4 : 0) +
+    (t.category_ticket === "Issue" ? 2 : 0) +
+    (t.derived.handler === "Dev" ? 2 : 0) +
+    (!t.derived.resolved ? 2 : 0) +
+    (t.derived.moodWorsened || t.derived.moodEnd === "Angry" || t.derived.moodEnd === "Frustrated" ? 2 : 0) +
+    (t.upsell_signal ? 1 : 0) +
+    (t.category_ticket === "Improve" || t.category_ticket === "Feedback" ? 1 : 0);
+  return [...cur].sort((a, b) => weight(b) - weight(a) || (b.recap_at_vn ?? 0) - (a.recap_at_vn ?? 0)).slice(0, DIGEST_MAX);
+}
 const inRange = (t: Ticket, from: string, to: string) => t.derived.dayKey != null && t.derived.dayKey >= from && t.derived.dayKey <= to;
 const dm = (k: string) => `${k.slice(8, 10)}/${k.slice(5, 7)}`;
 const short = (s: string | null | undefined, n: number) => (!s ? "" : s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -27,28 +43,34 @@ const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "�
 export interface FactBundle {
   facts: Record<string, PackFact>;
   tickets: Record<string, PackTicket>;
-  /** Danh sách ticket của tuần, dạng gọn để AI đọc nội dung từng ca. */
+  /** Danh sách ticket của kỳ (tối đa DIGEST_MAX, ưu tiên ca nhiều thông tin), dạng gọn để AI đọc nội dung từng ca. */
   digest: Record<string, unknown>[];
   totals: { tickets: number; issues: number; stores: number };
 }
 
-/** Kho bằng chứng cho tuần [from, to] (thứ 2 → chủ nhật), kèm 8 tuần lịch sử để thấy xu hướng. */
+/**
+ * Kho bằng chứng cho kỳ [from, to] (người dùng chọn), kèm 8 kỳ liên tiếp cùng độ dài để thấy xu hướng.
+ * "Kỳ trước" = kỳ cùng độ dài ngay trước. Bối cảnh (issue lặp lại, tiếng nói khách) = ít nhất 28 ngày tính tới `to`.
+ */
 export function buildFacts(all: Ticket[], from: string, to: string, groups: IssueGroups, today: string): FactBundle {
+  const len = diffDays(from, to) + 1;
   const weeks = Array.from({ length: WEEKS }, (_, i) => {
-    const f = addDays(from, -7 * (WEEKS - 1 - i));
-    return { from: f, to: addDays(f, 6), label: dm(f) };
+    const f = addDays(from, -len * (WEEKS - 1 - i));
+    return { from: f, to: addDays(f, len - 1), label: dm(f) };
   });
   const byWeek = weeks.map((w) => all.filter((t) => inRange(t, w.from, w.to)));
   const cur = byWeek[WEEKS - 1];
   const prev = byWeek[WEEKS - 2];
-  const last4 = all.filter((t) => inRange(t, weeks[WEEKS - 4].from, to));
+  const ctxFrom = len >= 28 ? from : addDays(to, -27);
+  const ctxLabel = len >= 28 ? "cả kỳ" : "4 tuần";
+  const last4 = all.filter((t) => inRange(t, ctxFrom, to));
   const facts: Record<string, PackFact> = {};
   const add = (f: PackFact) => {
     facts[f.id] = f;
   };
   const weekly = (fn: (ts: Ticket[]) => number | null) => weeks.map((w, i) => ({ label: w.label, v: fn(byWeek[i]) }));
 
-  // 1) Mọi chỉ số trong bộ chỉ số chuẩn: tuần này, tuần trước, 8 tuần.
+  // 1) Mọi chỉ số trong bộ chỉ số chuẩn: kỳ này, kỳ trước, 8 kỳ.
   for (const def of METRICS) {
     const c = def.compute(cur);
     const p = def.compute(prev);
@@ -73,9 +95,9 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
   const catRows = countBy(issuesCur, (t) => t.category_issue).map((b) => {
     const ts = issuesCur.filter((t) => t.category_issue === b.key);
     const prevN = prev.filter((t) => t.category_ticket === "Issue" && t.category_issue === b.key).length;
-    return { key: b.key, value: b.count, display: `${b.count} ticket`, extra: `tuần trước ${prevN} · chưa resolved ${ts.filter((t) => !t.derived.resolved).length} · cần Dev ${ts.filter((t) => t.derived.handler === "Dev").length}` };
+    return { key: b.key, value: b.count, display: `${b.count} ticket`, extra: `kỳ trước ${prevN} · chưa resolved ${ts.filter((t) => !t.derived.resolved).length} · cần Dev ${ts.filter((t) => t.derived.handler === "Dev").length}` };
   });
-  add({ id: "breakdown:category_issue", label: "Ticket Issue theo category (tuần này)", note: "Số ticket Issue của mỗi category_issue trong tuần.", rows: catRows });
+  add({ id: "breakdown:category_issue", label: "Ticket Issue theo category (kỳ này)", note: "Số ticket Issue của mỗi category_issue trong kỳ.", rows: catRows });
   for (const b of countBy(last4.filter((t) => t.category_ticket === "Issue"), (t) => t.category_issue)) {
     const ts = issuesCur.filter((t) => t.category_issue === b.key);
     const pN = prev.filter((t) => t.category_ticket === "Issue" && t.category_issue === b.key).length;
@@ -84,7 +106,7 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     add({
       id: `category:${b.key}`,
       label: `Category ${b.key}`,
-      note: `Ticket Issue thuộc category ${b.key}. 4 tuần gần nhất: ${b.count} ticket.`,
+      note: `Ticket Issue thuộc category ${b.key}. ${ctxLabel}: ${b.count} ticket.`,
       value: `${ts.length} ticket`,
       prev: `${pN} ticket`,
       delta: `${ts.length - pN >= 0 ? "+" : ""}${ts.length - pN}`,
@@ -99,11 +121,11 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
         { key: "Khách Angry/Frustrated", value: ts.filter((t) => t.derived.moodEnd === "Angry" || t.derived.moodEnd === "Frustrated").length },
       ],
       ticketIds: ts.slice(0, 15).map((t) => t.id),
-      ...(csat != null || handle != null ? { note: `Ticket Issue thuộc category ${b.key}. 4 tuần: ${b.count} ticket. CSAT TB tuần này ${csat != null ? csat.toFixed(1) : "—"}/5 · thời gian ticket (trung vị) ${handle != null ? formatDuration(handle) : "—"}.` } : {}),
+      ...(csat != null || handle != null ? { note: `Ticket Issue thuộc category ${b.key}. ${ctxLabel}: ${b.count} ticket. CSAT TB kỳ này ${csat != null ? csat.toFixed(1) : "—"}/5 · thời gian ticket (trung vị) ${handle != null ? formatDuration(handle) : "—"}.` } : {}),
     });
   }
 
-  // 3) Issue lặp lại (nhóm AI gom): 4 tuần gần nhất.
+  // 3) Issue lặp lại (nhóm AI gom) trong bối cảnh.
   const byGroup = new Map<string, { title: string; category: string; items: TicketIssue[] }>();
   for (const x of last4.flatMap(groupableItems)) {
     const g = groupOf(x, groups);
@@ -119,8 +141,8 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     .slice(0, 40);
   add({
     id: "breakdown:repeat_issues",
-    label: "Issue lặp lại nhiều nhất (4 tuần)",
-    note: "Issue (AI gom các issue con cùng vấn đề cụ thể, từ cột issues_all) xuất hiện ở từ 2 ticket trở lên trong 4 tuần gần nhất.",
+    label: `Issue lặp lại nhiều nhất (${ctxLabel})`,
+    note: `Issue (AI gom các issue con cùng vấn đề cụ thể, từ cột issues_all) xuất hiện ở từ 2 ticket trở lên trong ${ctxLabel}.`,
     rows: repeated.slice(0, 20).map(([, e]) => ({ key: e.title, value: e.ts.length, display: `${e.ts.length} ticket`, extra: `${e.category} · ${new Set(e.ts.map((t) => t.store_domain).filter(Boolean)).size} store` })),
   });
   for (const [id, e] of repeated) {
@@ -130,9 +152,9 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     add({
       id: `issue:${id}`,
       label: e.title,
-      note: `Issue lặp lại thuộc ${e.category}. 4 tuần: ${e.ts.length} ticket từ ${new Set(e.ts.map((t) => t.store_domain).filter(Boolean)).size} store; chưa xong ${e.items.filter(itemOpen).length}; cần Dev ${e.items.filter((x) => /dev/i.test(x.item.status ?? "")).length}; churn risk ${e.ts.filter((t) => t.churn_risk === true).length}.`,
-      value: `${wk} ticket tuần này`,
-      prev: `${pk} ticket tuần trước`,
+      note: `Issue lặp lại thuộc ${e.category}. ${ctxLabel}: ${e.ts.length} ticket từ ${new Set(e.ts.map((t) => t.store_domain).filter(Boolean)).size} store; chưa xong ${e.items.filter(itemOpen).length}; cần Dev ${e.items.filter((x) => /dev/i.test(x.item.status ?? "")).length}; churn risk ${e.ts.filter((t) => t.churn_risk === true).length}.`,
+      value: `${wk} ticket kỳ này`,
+      prev: `${pk} ticket kỳ trước`,
       series: weekly((w) => w.filter((t) => groupableItems(t).some((x) => groupOf(x, groups).id === id)).length),
       seriesFormat: "count",
       rows: countBy(e.ts, (t) => t.root_cause).map((b) => ({ key: `Nguyên nhân: ${b.key}`, value: b.count })),
@@ -140,30 +162,30 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     });
   }
 
-  // 4) Phân bố khác của tuần.
+  // 4) Phân bố khác của kỳ.
   const dist = (id: string, label: string, note: string, ts: Ticket[], fn: (t: Ticket) => string | null | undefined) =>
     add({ id, label, note, rows: countBy(ts, fn).slice(0, 15).map((b) => ({ key: b.key, value: b.count, display: `${b.count} (${Math.round(b.share * 100)}%)` })) });
-  dist("breakdown:root_cause", "Nguyên nhân gốc (tuần này)", "root_cause của ticket trong tuần.", cur, (t) => t.root_cause);
-  dist("breakdown:page_issue", "Trang gặp vấn đề (tuần này)", "page_issue của ticket Issue trong tuần.", issuesCur, (t) => t.page_issue);
-  dist("breakdown:resolution", "Kết quả xử lý (tuần này)", "resolution của ticket trong tuần.", cur, (t) => t.resolution);
-  dist("breakdown:handler", "Bậc xử lý cao nhất (tuần này)", "FL tự xử lý / TS / Dev.", cur, (t) => t.derived.handler);
-  dist("breakdown:plan_issue", "Ticket Issue theo plan PageFly (tuần này)", "Plan của store có ticket Issue.", issuesCur, (t) => t.pagefly_plan);
-  dist("breakdown:type_user", "Loại khách (tuần này)", "Khách vãng lai / khách đã sử dụng.", cur, (t) => t.type_user);
-  dist("breakdown:tenure", "Thời gian dùng app (tuần này)", "tenure của store.", cur, (t) => t.tenure);
-  dist("breakdown:shopify_plan", "Shopify plan (tuần này)", "Plan Shopify của store.", cur, (t) => t.shopify_plan);
-  dist("breakdown:country", "Quốc gia (tuần này)", "country của store.", cur, (t) => t.country);
-  dist("breakdown:mood_flow", "Mood khách đầu → cuối (tuần này)", "Mood lúc đầu → lúc kết thúc.", cur, (t) => (t.derived.moodStart && t.derived.moodEnd ? `${t.derived.moodStart} → ${t.derived.moodEnd}` : null));
-  dist("breakdown:feedback_solution", "Khách phản hồi về solution (tuần này)", "feedback_cx_solution.", cur, (t) => t.feedback_cx_solution);
+  dist("breakdown:root_cause", "Nguyên nhân gốc (kỳ này)", "root_cause của ticket trong kỳ.", cur, (t) => t.root_cause);
+  dist("breakdown:page_issue", "Trang gặp vấn đề (kỳ này)", "page_issue của ticket Issue trong kỳ.", issuesCur, (t) => t.page_issue);
+  dist("breakdown:resolution", "Kết quả xử lý (kỳ này)", "resolution của ticket trong kỳ.", cur, (t) => t.resolution);
+  dist("breakdown:handler", "Bậc xử lý cao nhất (kỳ này)", "FL tự xử lý / TS / Dev.", cur, (t) => t.derived.handler);
+  dist("breakdown:plan_issue", "Ticket Issue theo plan PageFly (kỳ này)", "Plan của store có ticket Issue.", issuesCur, (t) => t.pagefly_plan);
+  dist("breakdown:type_user", "Loại khách (kỳ này)", "Khách vãng lai / khách đã sử dụng.", cur, (t) => t.type_user);
+  dist("breakdown:tenure", "Thời gian dùng app (kỳ này)", "tenure của store.", cur, (t) => t.tenure);
+  dist("breakdown:shopify_plan", "Shopify plan (kỳ này)", "Plan Shopify của store.", cur, (t) => t.shopify_plan);
+  dist("breakdown:country", "Quốc gia (kỳ này)", "country của store.", cur, (t) => t.country);
+  dist("breakdown:mood_flow", "Mood khách đầu → cuối (kỳ này)", "Mood lúc đầu → lúc kết thúc.", cur, (t) => (t.derived.moodStart && t.derived.moodEnd ? `${t.derived.moodStart} → ${t.derived.moodEnd}` : null));
+  dist("breakdown:feedback_solution", "Khách phản hồi về solution (kỳ này)", "feedback_cx_solution.", cur, (t) => t.feedback_cx_solution);
 
   // 5) Theo ca và giờ: khối lượng + phản hồi đầu (trung vị).
   const shiftRows = countBy(cur, (t) => t.shift).map((b) => {
     const fr = median(cur.filter((t) => t.shift === b.key).map((t) => t.derived.firstReplySec).filter((x): x is number => x != null));
     return { key: b.key, value: b.count, display: `${b.count} ticket`, extra: `phản hồi đầu (trung vị) ${fr != null ? formatDuration(fr) : "—"}` };
   });
-  add({ id: "breakdown:shift", label: "Ticket và tốc độ phản hồi theo ca (tuần này)", note: "Số ticket mỗi ca và thời gian phản hồi đầu (trung vị).", rows: shiftRows });
+  add({ id: "breakdown:shift", label: "Ticket và tốc độ phản hồi theo ca (kỳ này)", note: "Số ticket mỗi ca và thời gian phản hồi đầu (trung vị).", rows: shiftRows });
   const hours = Array.from({ length: 24 }, (_, h) => ({ key: `${String(h).padStart(2, "0")}h`, value: 0 }));
   for (const t of cur) if (t.time_cx_contact != null) hours[new Date(t.time_cx_contact + VN_OFFSET_MS).getUTCHours()].value++;
-  add({ id: "breakdown:hour", label: "Khách liên hệ theo giờ trong ngày (giờ VN, tuần này)", note: "Giờ khách contact (time_cx_contact).", rows: hours });
+  add({ id: "breakdown:hour", label: "Khách liên hệ theo giờ trong ngày (giờ VN, kỳ này)", note: "Giờ khách contact (time_cx_contact).", rows: hours });
 
   // 6) Đội ngũ.
   const period = { from, to };
@@ -171,7 +193,7 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     const rows = people(cur, prev, role, period, "week").sort((a, b) => (b.score.score ?? -1) - (a.score.score ?? -1));
     add({
       id: `people:${role}`,
-      label: role === "fl" ? "Hiệu suất Front-line (tuần này)" : "Hiệu suất Technical support (tuần này)",
+      label: role === "fl" ? "Hiệu suất Front-line (kỳ này)" : "Hiệu suất Technical support (kỳ này)",
       note: "Điểm chất lượng 0–100 (dưới 5 ticket chưa đủ tin cậy) · số ticket · phản hồi đầu · tỷ lệ resolved · CSAT · mời review bỏ lỡ.",
       rows: rows.map((r) => ({
         key: r.name,
@@ -191,7 +213,7 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
   const churn = storeRows((t) => t.churn_risk === true);
   add({
     id: "stores:churn",
-    label: "Store có nguy cơ rời bỏ (tuần này)",
+    label: "Store có nguy cơ rời bỏ (kỳ này)",
     note: `Store có ticket churn_risk = Yes. Tổng giá plan: $${churn.reduce((s, t) => s + (t.pagefly_price ?? 0), 0)}/tháng.`,
     value: `${churn.length} store`,
     rows: churn.slice(0, 25).map((t) => ({ key: t.store_name ?? t.store_domain ?? "?", value: t.pagefly_price ?? 0, display: `${t.pagefly_plan ?? "—"} · $${t.pagefly_price ?? 0}`, extra: `${short(t.issue_summary, 90)}${t.time_uninstall ? " · đã gỡ app" : ""}` })),
@@ -200,7 +222,7 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
   const upsell = storeRows((t) => t.derived.upsell && !t.churn_risk);
   add({
     id: "stores:upsell",
-    label: "Cơ hội upsell (tuần này)",
+    label: "Cơ hội upsell (kỳ này)",
     note: "Store có upsell_signal và không có churn risk.",
     value: `${upsell.length} store`,
     rows: upsell.slice(0, 25).map((t) => ({ key: t.store_name ?? t.store_domain ?? "?", value: t.pagefly_price ?? 0, display: `${t.pagefly_plan ?? "—"} · $${t.pagefly_price ?? 0}`, extra: short(t.upsell_signal, 110) })),
@@ -211,7 +233,7 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
   const f = reviewFunnel(cur);
   add({
     id: "review:funnel",
-    label: "Phễu mời review (tuần này)",
+    label: "Phễu mời review (kỳ này)",
     note: "QUALIFIED = Recap Tool đánh giá đủ điều kiện mời review.",
     rows: [
       { key: "Đủ điều kiện mời review", value: f.qualified },
@@ -222,15 +244,15 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     ],
     ticketIds: cur.filter((t) => t.derived.reviewMissed).slice(0, 15).map((t) => t.id),
   });
-  add({ id: "review:missed_by_fl", label: "Mời review bị bỏ lỡ theo FL (tuần này)", note: "Ticket QUALIFIED nhưng FL chưa hỏi.", rows: countBy(cur.filter((t) => t.derived.reviewMissed), (t) => t.triggered_by).map((b) => ({ key: b.key, value: b.count })) });
+  add({ id: "review:missed_by_fl", label: "Mời review bị bỏ lỡ theo FL (kỳ này)", note: "Ticket QUALIFIED nhưng FL chưa hỏi.", rows: countBy(cur.filter((t) => t.derived.reviewMissed), (t) => t.triggered_by).map((b) => ({ key: b.key, value: b.count })) });
 
   // 9) Tiếng nói khách hàng.
   const voice = (id: string, label: string, ts: Ticket[], text: (t: Ticket) => string | null = (t) => t.issue_summary) =>
     add({ id, label, note: "Tóm tắt nội dung (issue_summary; với feedback form là nội dung form) và số lần xuất hiện.", value: `${ts.length} ticket`, rows: countBy(ts, text).slice(0, 25).map((b) => ({ key: short(b.key, 140), value: b.count })), ticketIds: ts.slice(0, 15).map((t) => t.id) });
-  voice("voice:improve", "Yêu cầu tính năng (Improve, 4 tuần)", last4.filter((t) => t.category_ticket === "Improve" || t.root_cause === "feature-request"));
-  voice("voice:feedback", "Góp ý (Feedback, 4 tuần)", last4.filter(isFeedback), feedbackText);
-  voice("voice:3rd_app", "Issue với app bên thứ 3 (4 tuần)", last4.filter((t) => t.category_issue === "3rd App" || t.root_cause === "third-party-app"));
-  voice("voice:how_to", "Câu hỏi cách dùng / khách chưa biết (4 tuần)", last4.filter((t) => t.category_issue === "Consultation/How-to" || t.root_cause === "customer-knowledge"));
+  voice("voice:improve", `Yêu cầu tính năng (Improve, ${ctxLabel})`, last4.filter((t) => t.category_ticket === "Improve" || t.root_cause === "feature-request"));
+  voice("voice:feedback", `Góp ý (Feedback, ${ctxLabel})`, last4.filter(isFeedback), feedbackText);
+  voice("voice:3rd_app", `Issue với app bên thứ 3 (${ctxLabel})`, last4.filter((t) => t.category_issue === "3rd App" || t.root_cause === "third-party-app"));
+  voice("voice:how_to", `Câu hỏi cách dùng / khách chưa biết (${ctxLabel})`, last4.filter((t) => t.category_issue === "Consultation/How-to" || t.root_cause === "customer-knowledge"));
 
   // 10) Backlog chờ Dev và ca kéo dài.
   const backlog = devBacklog(all, today);
@@ -243,9 +265,9 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
     ticketIds: backlog.slice(0, 15).map((b) => b.ticket.id),
   });
   const slow = [...cur].filter((t) => t.total_time_ticket != null).sort((a, b) => (b.total_time_ticket ?? 0) - (a.total_time_ticket ?? 0)).slice(0, 12);
-  add({ id: "tickets:slowest", label: "Ticket kéo dài nhất (tuần này)", note: "total_time_ticket dài nhất.", rows: slow.map((t) => ({ key: short(t.issue_summary, 100), value: Math.round((t.total_time_ticket ?? 0) / 60), display: formatDuration(t.total_time_ticket), extra: `${t.resolution ?? "—"} · ${t.triggered_by ?? "—"}` })), ticketIds: slow.map((t) => t.id) });
+  add({ id: "tickets:slowest", label: "Ticket kéo dài nhất (kỳ này)", note: "total_time_ticket dài nhất.", rows: slow.map((t) => ({ key: short(t.issue_summary, 100), value: Math.round((t.total_time_ticket ?? 0) / 60), display: formatDuration(t.total_time_ticket), extra: `${t.resolution ?? "—"} · ${t.triggered_by ?? "—"}` })), ticketIds: slow.map((t) => t.id) });
   const angry = cur.filter((t) => t.derived.moodEnd === "Angry" || t.derived.moodEnd === "Frustrated" || t.derived.moodWorsened);
-  add({ id: "tickets:negative_mood", label: "Ticket khách bực / mood xấu đi (tuần này)", note: "Mood cuối Angry/Frustrated hoặc mood xấu đi trong lúc support.", value: `${angry.length} ticket`, rows: angry.slice(0, 20).map((t) => ({ key: short(t.issue_summary, 100), value: 1, display: `${t.derived.moodStart ?? "?"} → ${t.derived.moodEnd ?? "?"}`, extra: t.resolution ?? "" })), ticketIds: angry.slice(0, 15).map((t) => t.id) });
+  add({ id: "tickets:negative_mood", label: "Ticket khách bực / mood xấu đi (kỳ này)", note: "Mood cuối Angry/Frustrated hoặc mood xấu đi trong lúc support.", value: `${angry.length} ticket`, rows: angry.slice(0, 20).map((t) => ({ key: short(t.issue_summary, 100), value: 1, display: `${t.derived.moodStart ?? "?"} → ${t.derived.moodEnd ?? "?"}`, extra: t.resolution ?? "" })), ticketIds: angry.slice(0, 15).map((t) => t.id) });
 
   // Ticket gọn để hiển thị (mọi ticket được nhắc tới) + digest cho AI.
   const tickets: Record<string, PackTicket> = {};
@@ -254,7 +276,7 @@ export function buildFacts(all: Ticket[], from: string, to: string, groups: Issu
   for (const t of last4) tickets[t.id] = pt(t);
   for (const fct of Object.values(facts)) for (const id of fct.ticketIds ?? []) if (!tickets[id] && known.has(id)) tickets[id] = pt(known.get(id)!);
 
-  const digest = cur.map((t) => ({
+  const digest = pickDigest(cur).map((t) => ({
     id: t.id,
     day: t.derived.dayKey,
     store: t.store_name ?? t.store_domain ?? undefined,

@@ -3,12 +3,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { loadDataset } from "@/lib/data";
-import { addDays, vnDayKey } from "@/lib/data/parse";
+import { addDays, diffDays, vnDayKey } from "@/lib/data/parse";
 import { weekStart } from "@/lib/reports";
 import { readGroups } from "@/lib/repeat/groups";
 import { kv } from "@/lib/store/kv";
 import { buildFacts } from "./facts";
-import { AREAS, PRIORITIES, type Insight, type InsightPack, type PackFocus, type PackIndexEntry, type PackPart } from "./types";
+import { AREAS, PACK_MAX_DAYS, PRIORITIES, packId, type Insight, type InsightPack, type PackFocus, type PackIndexEntry, type PackPart } from "./types";
 
 // Insight Pack mỗi tuần: code tính kho bằng chứng → gửi 5 mảng phân tích qua Message Batches API (chạy bất đồng bộ,
 // không bị giới hạn thời gian hàm của Vercel) → khi xong: kiểm tra dẫn chứng → AI gộp insight trùng → lưu.
@@ -26,7 +26,7 @@ const FOCUS_BRIEF: Record<PackFocus, { areas: string[]; brief: string }> = {
   bug: {
     areas: ["bug", "product"],
     brief:
-      "Lỗi sản phẩm cần Dev sửa và thứ tự ưu tiên: issue lặp lại nhiều store gặp, lỗi gây churn / chặn publish / chặn bán hàng (ATC, checkout), lỗi đang chờ Dev lâu, lỗi tăng so với tuần trước. Với mỗi lỗi: ảnh hưởng (bao nhiêu store, plan nào, doanh thu), dấu hiệu nguyên nhân kỹ thuật từ tóm tắt ticket, đề xuất sửa cụ thể hoặc workaround tạm cho CS.",
+      "Lỗi sản phẩm cần Dev sửa và thứ tự ưu tiên: issue lặp lại nhiều store gặp, lỗi gây churn / chặn publish / chặn bán hàng (ATC, checkout), lỗi đang chờ Dev lâu, lỗi tăng so với kỳ trước. Với mỗi lỗi: ảnh hưởng (bao nhiêu store, plan nào, doanh thu), dấu hiệu nguyên nhân kỹ thuật từ tóm tắt ticket, đề xuất sửa cụ thể hoặc workaround tạm cho CS.",
   },
   product: {
     areas: ["product", "docs"],
@@ -46,7 +46,7 @@ const FOCUS_BRIEF: Record<PackFocus, { areas: string[]; brief: string }> = {
   overview: {
     areas: ["data", "customer", "support", "product"],
     brief:
-      "Góc nhìn tổng quan cả tuần: thay đổi lớn nhất so với tuần trước và 8 tuần, bất thường, mối liên hệ giữa các mảng (vd lỗi X → churn Y → review thấp), rủi ro sắp tới, chất lượng dữ liệu recap (thiếu cột, ghi sai). Viết thêm headline (1 câu) và summary (3-5 câu) tóm tắt tuần. Không lặp lại insight chi tiết thuộc các mảng lỗi / sản phẩm / support / doanh thu — chỉ insight xuyên suốt.",
+      "Góc nhìn tổng quan cả kỳ: thay đổi lớn nhất so với kỳ trước và 8 kỳ, bất thường, mối liên hệ giữa các mảng (vd lỗi X → churn Y → review thấp), rủi ro sắp tới, chất lượng dữ liệu recap (thiếu cột, ghi sai). Viết thêm headline (1 câu) và summary (3-5 câu) tóm tắt kỳ. Không lặp lại insight chi tiết thuộc các mảng lỗi / sản phẩm / support / doanh thu — chỉ insight xuyên suốt.",
   },
 };
 
@@ -76,11 +76,11 @@ const PartOut = z.object({
   insights: z.array(InsightOut).describe("Không giới hạn số lượng — mọi insight có giá trị thật, không trùng nhau, có bằng chứng."),
 });
 
-const SYSTEM = `Bạn là nhóm chuyên gia (Head of Product, Head of Support, Customer Success, Growth) phân tích dữ liệu support hằng tuần của PageFly — app page builder trên Shopify (khách là chủ store Shopify; support qua Crisp; FL = front-line trả lời đầu, TS = technical support, Dev = lập trình viên).
+const SYSTEM = `Bạn là nhóm chuyên gia (Head of Product, Head of Support, Customer Success, Growth) phân tích dữ liệu support theo kỳ của PageFly — app page builder trên Shopify (khách là chủ store Shopify; support qua Crisp; FL = front-line trả lời đầu, TS = technical support, Dev = lập trình viên).
 Nhiệm vụ: tìm INSIGHT thật sự giúp công ty cải tiến — mỗi insight là một phát hiện + giải pháp làm được, không phải đọc lại chỉ số.
 
 Quy tắc bắt buộc về dữ liệu (rất quan trọng):
-- Chỉ dùng dữ liệu trong "Kho bằng chứng" và "Ticket tuần này". Mọi con số bạn viết phải có trong kho, hoặc tính trực tiếp từ số trong kho (ghi phép tính ở impact.basis). Không bịa số, không suy diễn số liệu không có.
+- Chỉ dùng dữ liệu trong "Kho bằng chứng" và "Ticket kỳ này". Mọi con số bạn viết phải có trong kho, hoặc tính trực tiếp từ số trong kho (ghi phép tính ở impact.basis). Không bịa số, không suy diễn số liệu không có.
 - evidence[].factId, measure.factId, charts[] phải là id có thật trong kho (chép y nguyên). ticketIds phải là id có trong danh sách ticket.
 - Khi kỳ so sánh có ít dữ liệu (dưới 10 ticket) thì không kết luận xu hướng tăng/giảm; nói rõ và hạ confidence.
 - Phân biệt rõ đâu là sự thật trong dữ liệu, đâu là giả thuyết.
@@ -133,29 +133,48 @@ export async function deletePack(id: string) {
 
 // ---------- Kỳ ----------
 
-/** Tuần đã kết thúc gần nhất (thứ 2 → chủ nhật) hoặc tuần đang chạy tới hôm nay. */
-export function packWeek(which: "last" | "current", today = vnDayKey(Date.now())): { from: string; to: string; label: string } {
-  const mon = weekStart(today);
-  const from = which === "last" ? addDays(mon, -7) : mon;
-  const to = which === "last" ? addDays(from, 6) : today;
-  const dmy = (k: string) => `${k.slice(8, 10)}/${k.slice(5, 7)}`;
-  return { from, to, label: `Tuần ${dmy(from)} – ${dmy(to)}/${to.slice(0, 4)}${which === "current" ? " (đến hôm nay)" : ""}` };
+export { packId };
+
+const dmy = (k: string) => `${k.slice(8, 10)}/${k.slice(5, 7)}/${k.slice(0, 4)}`;
+
+/** Tên kỳ: tuần trọn vẹn (thứ 2 → chủ nhật) ghi "Tuần …", còn lại ghi khoảng ngày. */
+export function packLabel(from: string, to: string): string {
+  const isWeek = weekStart(from) === from && addDays(from, 6) === to;
+  const start = from.slice(0, 4) === to.slice(0, 4) ? dmy(from).slice(0, 5) : dmy(from);
+  return `${isWeek ? "Tuần " : ""}${from === to ? dmy(from) : `${start} – ${dmy(to)}`}`;
+}
+
+/** Tuần đã kết thúc gần nhất (thứ 2 → chủ nhật). */
+export function lastWeek(today = vnDayKey(Date.now())): { from: string; to: string } {
+  const from = addDays(weekStart(today), -7);
+  return { from, to: addDays(from, 6) };
+}
+
+/** Khoảng cho phép: từ 1 đến PACK_MAX_DAYS ngày, không quá hôm nay. Trả lỗi (tiếng Việt) hoặc null. */
+export function checkRange(from: string, to: string, today = vnDayKey(Date.now())): string | null {
+  const ok = (k: string) => /^\d{4}-\d{2}-\d{2}$/.test(k);
+  if (!ok(from) || !ok(to)) return "Ngày không hợp lệ";
+  if (from > to) return "Ngày bắt đầu phải trước ngày kết thúc";
+  if (to > today) return "Không chọn ngày trong tương lai";
+  if (diffDays(from, to) + 1 > PACK_MAX_DAYS) return `Tối đa ${PACK_MAX_DAYS} ngày`;
+  return null;
 }
 
 // ---------- Tạo ----------
 
-export async function startPack(opts: { which: "last" | "current"; auto: boolean; createdBy: string }): Promise<InsightPack> {
+/** Tạo pack cho [from, to]. Pack được lưu vĩnh viễn; người gọi phải tự kiểm tra trùng trước để không tốn tiền. */
+export async function startPack(opts: { from: string; to: string; auto: boolean; createdBy: string }): Promise<InsightPack> {
   const today = vnDayKey(Date.now());
-  const w = packWeek(opts.which, today);
+  const { from, to } = opts;
   const ds = await loadDataset({ force: true });
   const groups = await readGroups();
-  const bundle = buildFacts(ds.tickets, w.from, w.to, groups, today);
-  const id = `${w.from}_${w.to}`;
+  const bundle = buildFacts(ds.tickets, from, to, groups, today);
+  const id = packId(from, to);
   const pack: InsightPack = {
     id,
-    from: w.from,
-    to: w.to,
-    label: w.label,
+    from,
+    to,
+    label: packLabel(from, to),
     status: "running",
     auto: opts.auto,
     createdAt: Date.now(),
@@ -183,13 +202,14 @@ function catalog(p: InsightPack): string {
     prev: f.prev,
     delta: f.delta,
     rows: f.rows?.slice(0, 25).map((r) => [r.key, r.display ?? r.value, r.extra].filter((x) => x != null && x !== "")),
-    weekly: f.series?.map((s) => `${s.label}:${s.v == null ? "—" : Math.round(s.v * 100) / 100}`).join(" "),
+    series: f.series?.map((s) => `${s.label}:${s.v == null ? "—" : Math.round(s.v * 100) / 100}`).join(" "),
     tickets: f.ticketIds?.length ? f.ticketIds : undefined,
   }));
   return JSON.stringify(facts);
 }
 
 function partRequest(p: InsightPack, digest: unknown[], focus: PackFocus): Anthropic.Messages.MessageCreateParamsNonStreaming {
+  const days = diffDays(p.from, p.to) + 1;
   const b = FOCUS_BRIEF[focus];
   const fmt = zodOutputFormat(PartOut);
   return {
@@ -205,7 +225,7 @@ function partRequest(p: InsightPack, digest: unknown[], focus: PackFocus): Anthr
         content: [
           {
             type: "text",
-            text: `Tuần phân tích: ${p.label} (${p.from} → ${p.to}). Tuần này: ${p.totals.tickets} ticket, ${p.totals.issues} ticket Issue, ${p.totals.stores} store. Chuỗi "weekly" là 8 tuần, tuần cuối là tuần này.\n\n## Kho bằng chứng (JSON)\n${catalog(p)}\n\n## Ticket tuần này (JSON)\n${JSON.stringify(digest)}`,
+            text: `Kỳ phân tích: ${p.label} (${p.from} → ${p.to}, ${days} ngày). Kỳ này: ${p.totals.tickets} ticket, ${p.totals.issues} ticket Issue, ${p.totals.stores} store. "Kỳ trước" = ${days} ngày ngay trước. Chuỗi "series" là 8 kỳ liên tiếp, mỗi kỳ ${days} ngày, kỳ cuối là kỳ này.\n\n## Kho bằng chứng (JSON)\n${catalog(p)}\n\n## Ticket kỳ này (JSON)${digest.length < p.totals.tickets ? ` — ${digest.length}/${p.totals.tickets} ticket nhiều thông tin nhất (feedback form, churn, Issue, cần Dev, chưa resolved, mood xấu); số liệu tổng trong kho tính trên toàn bộ ${p.totals.tickets} ticket` : ""}\n${JSON.stringify(digest)}`,
             cache_control: { type: "ephemeral" },
           },
           { type: "text", text: `## Mảng bạn phụ trách: ${b.brief}\nChỉ dùng area trong: ${b.areas.join(", ")}. Hãy làm hết mình: rà toàn bộ kho bằng chứng và từng ticket, viết mọi insight có giá trị cho mảng này.` },

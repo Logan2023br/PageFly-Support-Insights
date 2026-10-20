@@ -4,9 +4,9 @@ import { requireUser } from "@/lib/auth/current";
 import { aiConfigured } from "@/lib/ai/insights";
 import { listPacks, readPack } from "@/lib/insight-pack/generate";
 import { PRIORITY_LABEL, PRIORITIES } from "@/lib/insight-pack/types";
-import { formatVnDateTime } from "@/lib/data/parse";
+import { formatVnDateTime, vnDayKey } from "@/lib/data/parse";
 import type { SearchParams } from "@/lib/query";
-import { PackControls, PackRunning } from "@/components/insight-pack/pack-controls";
+import { PackControls, PackCreate, PackRunning } from "@/components/insight-pack/pack-controls";
 import { PackView } from "@/components/insight-pack/pack-view";
 import { InlineError, PageHeader, PageSkeleton } from "@/components/ui";
 
@@ -25,6 +25,11 @@ async function Insights({ searchParams }: { searchParams: Promise<SearchParams> 
   const wanted = typeof sp.pack === "string" ? sp.pack : null;
   const selected = wanted ?? list.find((e) => e.status === "done")?.id ?? list[0]?.id ?? null;
   const pack = selected ? await readPack(selected, { collect: true }) : null;
+  const isAdmin = user.role === "admin";
+  const keep = pack ? `pack=${encodeURIComponent(pack.id)}` : "";
+  const newHref = `/insights?${keep ? `${keep}&` : ""}new=1`;
+  const closeHref = `/insights${keep ? `?${keep}` : ""}`;
+  const showCreate = isAdmin && sp.new === "1";
   const counts = pack ? PRIORITIES.map((p) => [p, pack.insights.filter((i) => i.priority === p).length] as const) : [];
 
   return (
@@ -32,9 +37,11 @@ async function Insights({ searchParams }: { searchParams: Promise<SearchParams> 
       <PageHeader
         eyebrow="Support Insights"
         title="Insight Pack"
-        subtitle="Mỗi tuần AI đọc toàn bộ dữ liệu support và đề xuất việc cần làm: lỗi cần sửa, sản phẩm, quy trình support, khách hàng & doanh thu — kèm bằng chứng và kết quả kỳ vọng."
-        actions={<PackControls list={list} selected={pack?.id ?? null} isAdmin={user.role === "admin"} />}
+        subtitle="AI đọc toàn bộ dữ liệu support của khoảng thời gian bạn chọn và đề xuất việc cần làm: lỗi cần sửa, sản phẩm, quy trình support, khách hàng & doanh thu — kèm bằng chứng và kết quả kỳ vọng. Mỗi pack tạo một lần và được lưu lại; xem lại không tốn phí."
+        actions={<PackControls list={list} selected={pack?.id ?? null} isAdmin={isAdmin} newHref={newHref} />}
       />
+
+      {showCreate && <PackCreate list={list} today={vnDayKey(Date.now())} closeHref={closeHref} />}
 
       {!aiConfigured() && <InlineError>Chưa cấu hình ANTHROPIC_API_KEY nên chưa tạo được Insight Pack.</InlineError>}
 
@@ -42,7 +49,7 @@ async function Insights({ searchParams }: { searchParams: Promise<SearchParams> 
         <div className="rounded-[20px] border border-dashed border-pf-border px-6 py-14 text-center">
           <Lightbulb size={28} strokeWidth={1.5} className="mx-auto text-pf-primary-hi" />
           <p className="mt-3 text-[14px] font-semibold text-white">Chưa có Insight Pack nào</p>
-          <p className="mt-1 text-[12.5px] text-pf-muted">Hệ thống tự tạo pack của tuần trước vào 01:00 sáng thứ 2 hằng tuần.{user.role === "admin" ? " Admin có thể bấm “Tạo pack tuần trước” để tạo ngay." : ""}</p>
+          <p className="mt-1 text-[12.5px] text-pf-muted">Hệ thống tự tạo pack của tuần trước vào 01:00 sáng thứ 2 hằng tuần.{isAdmin ? " Admin có thể bấm “Tạo Insight Pack”, chọn khoảng thời gian rồi tạo." : ""}</p>
         </div>
       ) : pack.status === "running" ? (
         <PackRunning pack={pack} />

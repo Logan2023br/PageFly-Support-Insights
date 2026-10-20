@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { aiConfigured } from "@/lib/ai/insights";
-import { collectRunning, packWeek, readPack, startPack } from "@/lib/insight-pack/generate";
+import { collectRunning, lastWeek, packId, readPack, startPack } from "@/lib/insight-pack/generate";
 import { vnDayKey } from "@/lib/data/parse";
 import { dueGrains } from "@/lib/archive/periods";
 import { generateArchive } from "@/lib/archive/store";
@@ -31,10 +31,10 @@ export async function GET(request: NextRequest) {
   await collectRunning().catch(() => undefined);
   let pack: string | null = null;
   if (grains.includes("week") && aiConfigured()) {
-    const w = packWeek("last", today);
-    const existing = await readPack(`${w.from}_${w.to}`);
+    const w = lastWeek(today);
+    const existing = await readPack(packId(w.from, w.to));
     if (!existing || existing.status === "error") {
-      pack = (await startPack({ which: "last", auto: true, createdBy: "Hệ thống" })).id;
+      pack = (await startPack({ ...w, auto: true, createdBy: "Hệ thống" })).id;
     }
   }
   return NextResponse.json({ today, grains, results, grouping, pack });
