@@ -10,6 +10,9 @@ import { PackControls, PackCreate, PackRunning } from "@/components/insight-pack
 import { PackView } from "@/components/insight-pack/pack-view";
 import { InlineError, PageHeader, PageSkeleton } from "@/components/ui";
 
+/** Ngày hôm nay (giờ VN) — mốc tối đa cho form tạo pack. */
+const todayVn = () => vnDayKey(Date.now());
+
 export default function Page(props: PageProps<"/insights">) {
   return (
     <Suspense fallback={<PageSkeleton />}>
@@ -41,7 +44,7 @@ async function Insights({ searchParams }: { searchParams: Promise<SearchParams> 
         actions={<PackControls list={list} selected={pack?.id ?? null} isAdmin={isAdmin} newHref={newHref} />}
       />
 
-      {showCreate && <PackCreate list={list} today={vnDayKey(Date.now())} closeHref={closeHref} />}
+      {showCreate && <PackCreate list={list} today={todayVn()} closeHref={closeHref} />}
 
       {!aiConfigured() && <InlineError>Chưa cấu hình ANTHROPIC_API_KEY nên chưa tạo được Insight Pack.</InlineError>}
 
